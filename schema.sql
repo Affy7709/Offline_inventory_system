@@ -80,6 +80,8 @@ CREATE TABLE user_tokens (
 -- Seed Data
 INSERT INTO roles (name) VALUES ('Admin'), ('Manager'), ('Staff');
 INSERT INTO departments (name) VALUES ('IT'), ('HR'), ('Operations'), ('Sales');
--- Password is "password"
+-- Password for all seed users is "password"
 INSERT INTO users (username, password_hash, role_id, department_id) VALUES 
-('admin', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 1, 1);
+('admin', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 1, 1),
+('manager', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 2, 3),
+('staff', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 3, 4);
