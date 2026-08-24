@@ -1,5 +1,6 @@
-import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useState } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { clearAuth, apiFetch, getApiBase } from '../api';
 
 export default function Layout({ children }) {
   const navigate = useNavigate();
@@ -9,9 +10,16 @@ export default function Layout({ children }) {
   const userStr = localStorage.getItem('user');
   const user = userStr ? JSON.parse(userStr) : null;
 
-  const handleLogout = () => {
-    localStorage.removeItem('user');
-    navigate('/login');
+  const handleLogout = async () => {
+    try {
+      const apiBase = getApiBase();
+      await apiFetch(`${apiBase}/index.php?action=logout`, { method: 'POST' });
+    } catch (e) {
+      // Ignore network error on logout
+    } finally {
+      clearAuth();
+      navigate('/login');
+    }
   };
 
   const navItems = [

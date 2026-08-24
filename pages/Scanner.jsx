@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Html5QrcodeScanner, Html5QrcodeScanType } from 'html5-qrcode';
-import { getApiBase } from '../api';
+import { getApiBase, apiFetch } from '../api';
 
 export default function Scanner() {
   const [sku, setSku] = useState('');
@@ -54,13 +54,10 @@ export default function Scanner() {
     setProduct(null);
     setLoading(true);
 
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
     const apiBase = getApiBase();
 
     try {
-      const res = await fetch(`${apiBase}/index.php?action=product_by_qr&qr=${searchSku}`, {
-        headers: { 'X-User-Id': user.id || '' }
-      });
+      const res = await apiFetch(`${apiBase}/index.php?action=product_by_qr&qr=${searchSku}`);
       const data = await res.json();
       if (res.ok && data) {
         setProduct(data);
@@ -83,13 +80,12 @@ export default function Scanner() {
     }
 
     setLoading(true);
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
     const apiBase = getApiBase();
 
     try {
-      const res = await fetch(`${apiBase}/index.php?action=transaction`, {
+      const res = await apiFetch(`${apiBase}/index.php?action=transaction`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-User-Id': user.id || '' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           product_id: product.id,
           type: actionType,

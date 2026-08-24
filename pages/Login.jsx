@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getApiBase, setApiBase } from '../api';
+import { getApiBase, setApiBase, setAuthToken } from '../api';
 
 export default function Login() {
   const [username, setUsername] = useState('admin');
@@ -28,6 +28,7 @@ export default function Login() {
       const data = await res.json();
       if (res.ok && data.success) {
         localStorage.setItem('user', JSON.stringify(data.user));
+        setAuthToken(data.token);
         navigate('/');
       } else {
         setError(data.error || 'Invalid credentials');

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { getApiBase } from '../api';
+import { getApiBase, apiFetch } from '../api';
 
 export default function Dashboard() {
   const [data, setData] = useState({});
@@ -9,10 +9,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     const apiBase = getApiBase();
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    fetch(`${apiBase}/index.php?action=dashboard`, {
-      headers: { 'X-User-Id': user.id || '' }
-    })
+    apiFetch(`${apiBase}/index.php?action=dashboard`)
     .then(r => r.json())
     .then(d => setData(d))
     .catch(console.error)

@@ -1,7 +1,17 @@
 <?php
 require __DIR__ . '/db.php';
 
-header('Access-Control-Allow-Origin: *');
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
+$allowedOrigins = $config['cors_allowed_origins'] ?? '*';
+
+if ($allowedOrigins === '*') {
+    header('Access-Control-Allow-Origin: *');
+} elseif (is_array($allowedOrigins) && in_array($origin, $allowedOrigins, true)) {
+    header("Access-Control-Allow-Origin: $origin");
+} else {
+    header('Access-Control-Allow-Origin: ' . (is_string($allowedOrigins) ? $allowedOrigins : '*'));
+}
+
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-User-Id');
 header('Content-Type: application/json');
@@ -12,7 +22,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 $action = $_GET['action'] ?? '';
-$userId = $_SERVER['HTTP_X_USER_ID'] ?? null; // simple auth for audit logs
+
+function get_auth_token() {
+    $headers = [];
+    if (function_exists('apache_request_headers')) {
+        $headers = apache_request_headers();
+    }
+    $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? $headers['Authorization'] ?? $headers['authorization'] ?? '';
+    if (preg_match('/Bearer\s+(.*)$/i', $auth, $matches)) {
+        return trim($matches[1]);
+    }
+    return null;
+}
+
+function authenticate_user($pdo) {
+    $token = get_auth_token();
+    if (!$token) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Unauthorized: Missing authentication token']);
+        exit;
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT u.id, u.username, u.role_id, u.department_id, r.name as role_name, d.name as dept_name 
+        FROM user_tokens t
+        JOIN users u ON t.user_id = u.id
+        LEFT JOIN roles r ON u.role_id = r.id
+        LEFT JOIN departments d ON u.department_id = d.id
+        WHERE t.token = ? AND t.expires_at > NOW()
+    ");
+    $stmt->execute([$token]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$user) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Unauthorized: Invalid or expired session']);
+        exit;
+    }
+
+    return $user;
+}
+
+function create_user_token($pdo, $userId) {
+    $token = bin2hex(random_bytes(32));
+    $expiresAt = date('Y-m-d H:i:s', strtotime('+24 hours'));
+    
+    // Clean old expired tokens
+    $pdo->prepare("DELETE FROM user_tokens WHERE expires_at <= NOW() OR user_id = ?")->execute([$userId]);
+    
+    $stmt = $pdo->prepare("INSERT INTO user_tokens (token, user_id, expires_at) VALUES (?, ?, ?)");
+    $stmt->execute([$token, $userId, $expiresAt]);
+    return $token;
+}
 
 function audit_log($pdo, $userId, $actionDesc, $details = '') {
     if (!$userId) return;
@@ -26,21 +87,39 @@ switch ($action) {
             $body = json_decode(file_get_contents('php://input'), true);
             $username = $body['username'] ?? '';
             $password = $body['password'] ?? '';
+            
             $stmt = $pdo->prepare("SELECT u.*, r.name as role_name, d.name as dept_name FROM users u LEFT JOIN roles r ON u.role_id = r.id LEFT JOIN departments d ON u.department_id = d.id WHERE u.username = ?");
             $stmt->execute([$username]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
+            
             if ($user && password_verify($password, $user['password_hash'])) {
                 unset($user['password_hash']);
+                $token = create_user_token($pdo, $user['id']);
                 audit_log($pdo, $user['id'], 'Login', 'User logged in');
-                echo json_encode(['success' => true, 'user' => $user]);
+                echo json_encode([
+                    'success' => true, 
+                    'user' => $user,
+                    'token' => $token
+                ]);
             } else {
                 http_response_code(401);
-                echo json_encode(['error' => 'Invalid credentials']);
+                echo json_encode(['error' => 'Invalid username or password']);
             }
         }
         break;
 
+    case 'logout':
+        $user = authenticate_user($pdo);
+        $token = get_auth_token();
+        if ($token) {
+            $stmt = $pdo->prepare("DELETE FROM user_tokens WHERE token = ?");
+            $stmt->execute([$token]);
+        }
+        echo json_encode(['success' => true]);
+        break;
+
     case 'dashboard':
+        $user = authenticate_user($pdo);
         if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $totalProducts = $pdo->query("SELECT COUNT(*) FROM products")->fetchColumn();
             $lowStock = $pdo->query("SELECT COUNT(*) FROM products WHERE current_stock <= min_stock_level")->fetchColumn();
@@ -63,6 +142,7 @@ switch ($action) {
         break;
 
     case 'categories':
+        $user = authenticate_user($pdo);
         if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $stmt = $pdo->query("SELECT * FROM categories ORDER BY name");
             echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
@@ -70,12 +150,13 @@ switch ($action) {
             $body = json_decode(file_get_contents('php://input'), true);
             $stmt = $pdo->prepare("INSERT INTO categories (name) VALUES (?)");
             $stmt->execute([$body['name']]);
-            audit_log($pdo, $userId, 'Added Category', $body['name']);
+            audit_log($pdo, $user['id'], 'Added Category', $body['name']);
             echo json_encode(['success' => true]);
         }
         break;
 
     case 'subcategories':
+        $user = authenticate_user($pdo);
         if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $stmt = $pdo->query("SELECT s.*, c.name as category_name FROM subcategories s JOIN categories c ON s.category_id = c.id ORDER BY s.name");
             echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
@@ -83,12 +164,13 @@ switch ($action) {
             $body = json_decode(file_get_contents('php://input'), true);
             $stmt = $pdo->prepare("INSERT INTO subcategories (category_id, name) VALUES (?, ?)");
             $stmt->execute([$body['category_id'], $body['name']]);
-            audit_log($pdo, $userId, 'Added Subcategory', $body['name']);
+            audit_log($pdo, $user['id'], 'Added Subcategory', $body['name']);
             echo json_encode(['success' => true]);
         }
         break;
 
     case 'products':
+        $user = authenticate_user($pdo);
         if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $stmt = $pdo->query("SELECT p.*, s.name as subcategory_name FROM products p LEFT JOIN subcategories s ON p.subcategory_id = s.id ORDER BY p.id DESC");
             echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
@@ -107,12 +189,13 @@ switch ($action) {
                 $body['min_stock_level'] ?? 5,
                 $body['current_stock'] ?? 0
             ]);
-            audit_log($pdo, $userId, 'Added Product', $body['name']);
+            audit_log($pdo, $user['id'], 'Added Product', $body['name']);
             echo json_encode(['success' => true]);
         }
         break;
 
     case 'product_by_qr':
+        $user = authenticate_user($pdo);
         if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $qr = $_GET['qr'] ?? '';
             $stmt = $pdo->prepare("SELECT p.*, s.name as subcategory_name FROM products p LEFT JOIN subcategories s ON p.subcategory_id = s.id WHERE p.qr_code = ? OR p.sku = ?");
@@ -124,6 +207,7 @@ switch ($action) {
         break;
 
     case 'transaction':
+        $user = authenticate_user($pdo);
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $body = json_decode(file_get_contents('php://input'), true);
             $productId = $body['product_id'];
@@ -151,9 +235,9 @@ switch ($action) {
 
                 // Record transaction
                 $stmt = $pdo->prepare("INSERT INTO transactions (product_id, user_id, department_id, type, quantity, notes) VALUES (?, ?, ?, ?, ?, ?)");
-                $stmt->execute([$productId, $userId, $deptId, $type, $quantity, $notes]);
+                $stmt->execute([$productId, $user['id'], $deptId, $type, $quantity, $notes]);
 
-                audit_log($pdo, $userId, ucfirst($type) . ' Transaction', "Qty: $quantity, Product ID: $productId");
+                audit_log($pdo, $user['id'], ucfirst($type) . ' Transaction', "Qty: $quantity, Product ID: $productId");
 
                 $pdo->commit();
                 echo json_encode(['success' => true, 'new_stock' => $newStock]);
@@ -166,8 +250,8 @@ switch ($action) {
         break;
 
     case 'reports':
+        $user = authenticate_user($pdo);
         if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-            // Get all transactions with details for reporting
             $stmt = $pdo->query("
                 SELECT t.id, t.type, t.quantity, t.transaction_date, t.notes, 
                        p.name as product_name, p.sku, 
@@ -183,6 +267,7 @@ switch ($action) {
         break;
 
     case 'departments':
+        $user = authenticate_user($pdo);
         if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             echo json_encode($pdo->query("SELECT * FROM departments ORDER BY name")->fetchAll(PDO::FETCH_ASSOC));
         }

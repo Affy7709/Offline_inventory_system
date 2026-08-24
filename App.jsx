@@ -8,9 +8,12 @@ import Scanner from './pages/Scanner';
 import Reports from './pages/Reports';
 import './App.css';
 
+import { getAuthToken } from './api';
+
 function PrivateRoute({ children }) {
   const user = localStorage.getItem('user');
-  return user ? <Layout>{children}</Layout> : <Navigate to="/login" />;
+  const token = getAuthToken();
+  return (user && token) ? <Layout>{children}</Layout> : <Navigate to="/login" />;
 }
 
 export default function App() {

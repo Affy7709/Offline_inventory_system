@@ -70,6 +70,13 @@ CREATE TABLE audit_logs (
     timestamp TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE user_tokens (
+    token VARCHAR(64) PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    expires_at TIMESTAMP NOT NULL
+);
+
 -- Seed Data
 INSERT INTO roles (name) VALUES ('Admin'), ('Manager'), ('Staff');
 INSERT INTO departments (name) VALUES ('IT'), ('HR'), ('Operations'), ('Sales');

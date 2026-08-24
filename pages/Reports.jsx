@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import { getApiBase } from '../api';
+import { getApiBase, apiFetch } from '../api';
 
 export default function Reports() {
   const [logs, setLogs] = useState([]);
@@ -10,10 +10,7 @@ export default function Reports() {
 
   useEffect(() => {
     const apiBase = getApiBase();
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    fetch(`${apiBase}/index.php?action=reports`, {
-      headers: { 'X-User-Id': user.id || '' }
-    })
+    apiFetch(`${apiBase}/index.php?action=reports`)
     .then(r => r.json())
     .then(data => setLogs(Array.isArray(data) ? data : []))
     .catch(console.error)

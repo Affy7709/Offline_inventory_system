@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getApiBase } from '../api';
+import { getApiBase, apiFetch } from '../api';
 
 export default function Categories() {
   const [categories, setCategories] = useState([]);
@@ -21,8 +21,8 @@ export default function Categories() {
     const apiBase = getApiBase();
     try {
       const [cRes, sRes] = await Promise.all([
-        fetch(`${apiBase}/index.php?action=categories`),
-        fetch(`${apiBase}/index.php?action=subcategories`)
+        apiFetch(`${apiBase}/index.php?action=categories`),
+        apiFetch(`${apiBase}/index.php?action=subcategories`)
       ]);
       setCategories(cRes.ok ? await cRes.json() : []);
       setSubcategories(sRes.ok ? await sRes.json() : []);
@@ -36,12 +36,11 @@ export default function Categories() {
   const handleAddCategory = async (e) => {
     e.preventDefault();
     if (!catName.trim()) return;
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
     const apiBase = getApiBase();
 
-    await fetch(`${apiBase}/index.php?action=categories`, {
+    await apiFetch(`${apiBase}/index.php?action=categories`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-User-Id': user.id || '' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: catName })
     });
     setCatName('');
@@ -52,12 +51,11 @@ export default function Categories() {
   const handleAddSubcategory = async (e) => {
     e.preventDefault();
     if (!subForm.category_id || !subForm.name.trim()) return;
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
     const apiBase = getApiBase();
 
-    await fetch(`${apiBase}/index.php?action=subcategories`, {
+    await apiFetch(`${apiBase}/index.php?action=subcategories`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-User-Id': user.id || '' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(subForm)
     });
     setSubForm({ category_id: '', name: '' });

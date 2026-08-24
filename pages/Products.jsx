@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Download, X } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
-import { getApiBase } from '../api';
+import { getApiBase, apiFetch } from '../api';
 
 export default function Products() {
   const [products, setProducts] = useState([]);
@@ -23,12 +23,11 @@ export default function Products() {
 
   const fetchData = async () => {
     setLoading(true);
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
     const apiBase = getApiBase();
     try {
       const [pRes, sRes] = await Promise.all([
-        fetch(`${apiBase}/index.php?action=products`, { headers: { 'X-User-Id': user.id || '' } }),
-        fetch(`${apiBase}/index.php?action=subcategories`)
+        apiFetch(`${apiBase}/index.php?action=products`),
+        apiFetch(`${apiBase}/index.php?action=subcategories`)
       ]);
       setProducts(pRes.ok ? await pRes.json() : []);
       setSubs(sRes.ok ? await sRes.json() : []);
@@ -41,11 +40,10 @@ export default function Products() {
 
   const handleAdd = async (e) => {
     e.preventDefault();
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
     const apiBase = getApiBase();
-    await fetch(`${apiBase}/index.php?action=products`, {
+    await apiFetch(`${apiBase}/index.php?action=products`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-User-Id': user.id || '' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(form)
     });
     setShowAdd(false);
