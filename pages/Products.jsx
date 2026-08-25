@@ -78,19 +78,19 @@ export default function Products() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-text-primary tracking-tight">Products</h1>
           <p className="text-sm text-text-secondary mt-1">Manage your warehouse inventory items</p>
         </div>
-        <button onClick={() => setShowAdd(true)} className="btn-primary">
+        <button onClick={() => setShowAdd(true)} className="btn-primary w-full sm:w-auto justify-center">
           <span className="material-symbols-outlined text-lg">add</span>
           Add Product
         </button>
       </div>
 
       {/* Search Bar */}
-      <div className="relative max-w-md">
+      <div className="relative w-full sm:max-w-md">
         <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-text-tertiary text-xl">search</span>
         <input 
           type="text"

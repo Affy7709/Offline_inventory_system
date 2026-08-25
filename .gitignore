@@ -1,7 +1,26 @@
-node_modules
-dist
-dist-ssr
+# ── Build & deps ──────────────────────────────────────────────
+node_modules/
+dist/
+dist-ssr/
 *.local
+
+# ── Environment & secrets ─────────────────────────────────────
 .env
-.DS_Store
+.env.*
+!.env.example
+
+# ── Database config (contains host, user, password) ──────────
 config.php
+
+# ── User credentials (contains plaintext passwords) ──────────
+seed_credentials.php
+
+# ── OS & editor ───────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/settings.json
+
+# ── PHP logs ──────────────────────────────────────────────────
+*.log
+php_errors.log

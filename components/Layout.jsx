@@ -35,7 +35,7 @@ export default function Layout({ children }) {
   return (
     <div className="h-screen flex overflow-hidden bg-bg">
       {/* ── Sidebar ── */}
-      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-border flex flex-col transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-border flex flex-col transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`} style={{minWidth:'256px'}}>
         {/* Logo */}
         <div className="h-16 flex items-center gap-3 px-6 border-b border-border flex-shrink-0">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center shadow-sm">
@@ -105,26 +105,26 @@ export default function Layout({ children }) {
       )}
 
       {/* ── Main Area ── */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
         {/* Top bar — mobile */}
-        <header className="md:hidden h-16 bg-white border-b border-border px-4 flex items-center justify-between flex-shrink-0 sticky top-0 z-20">
-          <button onClick={() => setSidebarOpen(true)} className="p-2 -ml-2 rounded-lg hover:bg-surface-raised transition-colors">
-            <span className="material-symbols-outlined text-text-secondary">menu</span>
+        <header className="md:hidden h-14 bg-white border-b border-border px-4 flex items-center justify-between flex-shrink-0 sticky top-0 z-20 shadow-sm">
+          <button onClick={() => setSidebarOpen(true)} className="p-2 -ml-1 rounded-lg hover:bg-surface-raised transition-colors flex items-center justify-center w-10 h-10">
+            <span className="material-symbols-outlined text-text-secondary" style={{fontSize:'22px'}}>menu</span>
           </button>
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center">
-              <span className="material-symbols-outlined text-white text-base" style={{fontVariationSettings: "'FILL' 1"}}>inventory</span>
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center flex-shrink-0">
+              <span className="material-symbols-outlined text-white" style={{fontSize:'16px', fontVariationSettings: "'FILL' 1"}}>inventory</span>
             </div>
-            <span className="font-bold text-text-primary">Invendor</span>
+            <span className="font-bold text-text-primary text-base">Invendor</span>
           </div>
-          <div className="w-8 h-8 rounded-full bg-primary-light flex items-center justify-center">
-            <span className="material-symbols-outlined text-primary text-base">person</span>
+          <div className="w-8 h-8 rounded-full bg-primary-light flex items-center justify-center flex-shrink-0">
+            <span className="material-symbols-outlined text-primary" style={{fontSize:'18px'}}>person</span>
           </div>
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-5 md:py-8">
             {children}
           </div>
         </main>

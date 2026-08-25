@@ -40,28 +40,28 @@ export default function Dashboard() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-text-primary tracking-tight">Dashboard</h1>
           <p className="text-sm text-text-secondary mt-1">Overview of your warehouse inventory</p>
         </div>
-        <Link to="/scanner" className="btn-primary">
+        <Link to="/scanner" className="btn-primary w-full sm:w-auto justify-center">
           <span className="material-symbols-outlined text-lg">qr_code_scanner</span>
           Scan & Issue
         </Link>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 stagger">
+      <div className="grid grid-cols-2 gap-3 stagger">
         {stats.map((s, i) => (
-          <div key={i} className="card p-5 animate-fade-in">
+          <div key={i} className="card p-4 animate-fade-in">
             <div className="flex items-start justify-between mb-3">
-              <div className={`w-10 h-10 rounded-xl ${s.iconBg} flex items-center justify-center shadow-sm`}>
-                <span className="material-symbols-outlined text-white text-xl">{s.icon}</span>
+              <div className={`w-9 h-9 rounded-xl ${s.iconBg} flex items-center justify-center shadow-sm flex-shrink-0`}>
+                <span className="material-symbols-outlined text-white" style={{fontSize:'20px'}}>{s.icon}</span>
               </div>
             </div>
             <div className="text-2xl font-bold text-text-primary">{s.value}</div>
-            <div className="text-xs font-medium text-text-tertiary mt-0.5">{s.label}</div>
+            <div className="text-xs font-medium text-text-tertiary mt-0.5 leading-tight">{s.label}</div>
           </div>
         ))}
       </div>
