@@ -1,32 +1,19 @@
 {
-  "name": "inventory",
-  "private": true,
+  "name": "backend",
   "version": "1.0.0",
-  "type": "module",
+  "description": "",
+  "main": "index.js",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
-    "build": "vite build",
-    "lint": "oxlint .",
-    "preview": "vite preview --host 0.0.0.0"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
   "dependencies": {
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "lucide-react": "^1.33.0",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "react-router-dom": "^7.18.2",
-    "recharts": "^3.10.1",
-    "tailwind-merge": "^2.5.5"
-  },
-  "devDependencies": {
-    "@rollup/rollup-win32-x64-msvc": "^4.62.5",
-    "@tailwindcss/vite": "^4.3.3",
-    "@vitejs/plugin-react": "^4.3.4",
-    "autoprefixer": "^10.4.20",
-    "postcss": "^8.4.49",
-    "react-is": "^19.2.8",
-    "tailwindcss": "^4.3.3",
-    "vite": "^5.4.10"
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "pg": "^8.23.0",
+    "socket.io": "^4.8.3"
   }
 }
