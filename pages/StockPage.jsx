@@ -1,135 +1,97 @@
-import { useState, useEffect } from 'react';
-import { getApiBase, apiFetch } from '../api';
+import { useState, useEffect } from 'react'
+import { Badge } from '../components/ui/Badge'
+import { getApiBase, apiFetch } from '../api'
 
 export default function StockPage() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  const base = getApiBase()
 
   useEffect(() => {
-    const base = getApiBase();
     apiFetch(`${base}/index.php?action=stock_summary`)
       .then(r => r.json())
-      .then(d => setData(d))
+      .then(d => setData(d || {}))
       .catch(console.error)
-      .finally(() => setLoading(false));
-  }, []);
+      .finally(() => setLoading(false))
+  }, [base])
 
-  if (loading) return (
-    <div className="flex items-center justify-center h-64">
-      <span className="material-symbols-outlined animate-spin text-4xl text-primary">progress_activity</span>
-    </div>
-  );
+  const stockRows = data?.products || []
+  const stockIn = data?.stockIn ?? 0
+  const stockOut = data?.stockOut ?? 0
+  const auditCorrections = data?.auditCorrections ?? 0
 
-  const kpis = [
-    {
-      label: 'Stock In',
-      value: data?.stockIn ?? 0,
-      sub: 'This month',
-      icon: 'arrow_downward',
-      iconBg: 'bg-success',
-      textCls: 'text-success',
-    },
-    {
-      label: 'Stock Out',
-      value: data?.stockOut ?? 0,
-      sub: 'This month',
-      icon: 'arrow_upward',
-      iconBg: 'bg-danger',
-      textCls: 'text-danger',
-    },
-    {
-      label: 'Audit Corrections',
-      value: data?.auditCorrections ?? 0,
-      sub: 'Last 30 days',
-      icon: 'edit_note',
-      iconBg: 'bg-warning',
-      textCls: 'text-warning',
-    },
-  ];
-
-  const products = data?.products ?? [];
-
-  const getStatus = (p) => {
-    if (Number(p.current_stock) === 0)
-      return { label: 'Out of Stock', cls: 'badge-danger' };
-    if (Number(p.current_stock) <= Number(p.min_stock_level))
-      return { label: 'Low Stock', cls: 'badge-warning' };
-    return { label: 'In Stock', cls: 'badge-success' };
-  };
+  const getStatus = (row) => {
+    const stock = Number(row.current_stock)
+    const min = Number(row.min_stock_level)
+    if (stock <= 0) return 'Out of Stock'
+    if (stock <= min) return 'Low Stock'
+    return 'In Stock'
+  }
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-text-primary tracking-tight">Stock Management</h1>
-        <p className="text-sm text-text-secondary mt-1">Monthly stock movement and threshold overview</p>
+    <div className="space-y-6 p-4 md:p-6 font-sans">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-soft">
+        <h2 className="text-2xl font-semibold text-slate-900">Stock management</h2>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 stagger">
-        {kpis.map((k, i) => (
-          <div key={i} className="card p-5 animate-fade-in">
-            <div className="flex items-start justify-between mb-3">
-              <div className={`w-9 h-9 rounded-xl ${k.iconBg} flex items-center justify-center shadow-sm`}>
-                <span className="material-symbols-outlined text-white" style={{ fontSize: '20px' }}>{k.icon}</span>
-              </div>
-            </div>
-            <div className={`text-3xl font-bold ${k.textCls}`}>{k.value}</div>
-            <div className="text-sm font-semibold text-text-primary mt-1">{k.label}</div>
-            <div className="text-xs text-text-tertiary mt-0.5">{k.sub}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Threshold Table */}
-      <div className="card overflow-hidden">
-        <div className="p-5 border-b border-border flex items-center justify-between">
-          <div>
-            <h2 className="font-bold text-text-primary">Stock Thresholds</h2>
-            <p className="text-xs text-text-tertiary mt-0.5">Items ordered by lowest current stock</p>
-          </div>
-          <span className="badge badge-danger">
-            <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>warning</span>
-            {products.filter(p => Number(p.current_stock) <= Number(p.min_stock_level)).length} low
-          </span>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-soft">
+          <p className="text-sm text-slate-500">Stock in</p>
+          <div className="mt-3 text-3xl font-semibold text-slate-900">{stockIn}</div>
+          <p className="mt-2 text-sm text-slate-500">This month</p>
         </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-soft">
+          <p className="text-sm text-slate-500">Stock out</p>
+          <div className="mt-3 text-3xl font-semibold text-slate-900">{stockOut}</div>
+          <p className="mt-2 text-sm text-slate-500">This month</p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-soft">
+          <p className="text-sm text-slate-500">Audit corrections</p>
+          <div className="mt-3 text-3xl font-semibold text-slate-900">{auditCorrections}</div>
+          <p className="mt-2 text-sm text-slate-500">Last 30 days</p>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-soft">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-xl font-semibold text-slate-900">Stock thresholds</h3>
+        </div>
+
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse" style={{ minWidth: '500px' }}>
-            <thead>
-              <tr className="bg-surface border-b border-border text-[11px] font-bold text-text-tertiary uppercase tracking-wider">
-                <th className="px-4 py-3">Item</th>
-                <th className="px-4 py-3">Category</th>
-                <th className="px-4 py-3 text-center">Current Qty</th>
-                <th className="px-4 py-3 text-center">Threshold</th>
-                <th className="px-4 py-3">Status</th>
+          <table className="min-w-full text-left text-sm">
+            <thead className="text-slate-500 border-b border-slate-200">
+              <tr>
+                <th className="pb-3 pr-4 font-medium">Item</th>
+                <th className="pb-3 pr-4 font-medium">SKU</th>
+                <th className="pb-3 pr-4 font-medium text-center">Qty</th>
+                <th className="pb-3 pr-4 font-medium text-center">Threshold</th>
+                <th className="pb-3 font-medium">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
-              {products.length > 0 ? products.map(p => {
-                const status = getStatus(p);
-                const isLow = Number(p.current_stock) <= Number(p.min_stock_level);
-                return (
-                  <tr key={p.id} className={`hover:bg-surface-raised transition-colors ${isLow ? 'bg-danger-bg/20' : ''}`}>
-                    <td className="px-4 py-3">
-                      <div className="font-semibold text-sm text-text-primary">{p.name}</div>
-                      <div className="text-xs font-mono text-text-tertiary">{p.sku}</div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-text-secondary">{p.subcategory_name || '—'}</td>
-                    <td className={`px-4 py-3 text-center font-bold text-lg ${isLow ? 'text-danger' : 'text-text-primary'}`}>
-                      {p.current_stock}
-                    </td>
-                    <td className="px-4 py-3 text-center text-text-secondary">{p.min_stock_level}</td>
-                    <td className="px-4 py-3">
-                      <span className={`badge ${status.cls}`}>{status.label}</span>
-                    </td>
-                  </tr>
-                );
-              }) : (
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
                 <tr>
-                  <td colSpan={5} className="p-16 text-center">
-                    <span className="material-symbols-outlined text-5xl text-border mb-3 block">inventory</span>
-                    <p className="text-text-secondary font-medium">No products found.</p>
-                  </td>
+                  <td colSpan={5} className="py-8 text-center text-slate-400">Loading stock data…</td>
+                </tr>
+              ) : stockRows.length > 0 ? (
+                stockRows.map((row) => {
+                  const status = getStatus(row)
+                  return (
+                    <tr key={row.id} className="hover:bg-slate-50/80 transition">
+                      <td className="py-3 pr-4 font-semibold text-slate-800">{row.name}</td>
+                      <td className="py-3 pr-4 text-slate-500 font-mono text-xs">{row.sku}</td>
+                      <td className="py-3 pr-4 text-slate-900 font-bold text-center">{row.current_stock}</td>
+                      <td className="py-3 pr-4 text-slate-600 text-center">{row.min_stock_level}</td>
+                      <td className="py-3">
+                        <Badge tone={status === 'In Stock' ? 'success' : 'danger'}>{status}</Badge>
+                      </td>
+                    </tr>
+                  )
+                })
+              ) : (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-slate-400">No stock records found</td>
                 </tr>
               )}
             </tbody>
@@ -137,5 +99,5 @@ export default function StockPage() {
         </div>
       </div>
     </div>
-  );
+  )
 }

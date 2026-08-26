@@ -1,124 +1,72 @@
-import { useState, useEffect } from 'react';
-import { getApiBase, apiFetch } from '../api';
+import { useState, useEffect } from 'react'
+import { Badge } from '../components/ui/Badge'
+import { getApiBase, apiFetch } from '../api'
 
 export default function AllocationsPage() {
-  const [allocations, setAllocations] = useState([]);
-  const [loading, setLoading]         = useState(true);
-  const [typeFilter, setTypeFilter]   = useState('');
+  const [allocations, setAllocations] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const base = getApiBase()
 
   useEffect(() => {
-    const base = getApiBase();
     apiFetch(`${base}/index.php?action=allocations`)
       .then(r => r.json())
       .then(d => setAllocations(Array.isArray(d) ? d : []))
       .catch(console.error)
-      .finally(() => setLoading(false));
-  }, []);
-
-  const filtered = typeFilter
-    ? allocations.filter(a => a.type === typeFilter)
-    : allocations;
-
-  const issueCount  = allocations.filter(a => a.type === 'issue').length;
-  const returnCount = allocations.filter(a => a.type === 'return').length;
-
-  if (loading) return (
-    <div className="flex items-center justify-center h-64">
-      <span className="material-symbols-outlined animate-spin text-4xl text-primary">progress_activity</span>
-    </div>
-  );
+      .finally(() => setLoading(false))
+  }, [base])
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-text-primary tracking-tight">User & Department Allocations</h1>
-        <p className="text-sm text-text-secondary mt-1">Track asset allocations across users and departments</p>
+    <div className="space-y-6 p-4 md:p-6 font-sans">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-soft">
+        <h2 className="text-2xl font-semibold text-slate-900">User & department allocation tracking</h2>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 gap-4 stagger">
-        <div className="card p-4 animate-fade-in">
-          <div className="w-8 h-8 rounded-lg bg-danger-bg flex items-center justify-center mb-3">
-            <span className="material-symbols-outlined text-danger" style={{ fontSize: '18px' }}>arrow_upward</span>
-          </div>
-          <div className="text-2xl font-bold text-danger">{issueCount}</div>
-          <div className="text-xs text-text-tertiary mt-0.5">Total Issues</div>
-        </div>
-        <div className="card p-4 animate-fade-in">
-          <div className="w-8 h-8 rounded-lg bg-success-bg flex items-center justify-center mb-3">
-            <span className="material-symbols-outlined text-success" style={{ fontSize: '18px' }}>arrow_downward</span>
-          </div>
-          <div className="text-2xl font-bold text-success">{returnCount}</div>
-          <div className="text-xs text-text-tertiary mt-0.5">Total Returns</div>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="card overflow-hidden">
-        <div className="p-4 border-b border-border flex items-center justify-between gap-3 flex-wrap">
-          <h2 className="font-bold text-text-primary">Allocation Records</h2>
-          <select
-            className="input-field w-auto text-sm"
-            value={typeFilter}
-            onChange={e => setTypeFilter(e.target.value)}
-          >
-            <option value="">All types</option>
-            <option value="issue">Issues only</option>
-            <option value="return">Returns only</option>
-          </select>
-        </div>
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-soft">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse" style={{ minWidth: '600px' }}>
-            <thead>
-              <tr className="bg-surface border-b border-border text-[11px] font-bold text-text-tertiary uppercase tracking-wider">
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">User / Department</th>
-                <th className="px-4 py-3">Asset</th>
-                <th className="px-4 py-3 text-center">Qty</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Notes</th>
+          <table className="min-w-full text-left text-sm">
+            <thead className="text-slate-500 border-b border-slate-200">
+              <tr>
+                <th className="pb-3 pr-4 font-medium">User / Department</th>
+                <th className="pb-3 pr-4 font-medium">Asset</th>
+                <th className="pb-3 pr-4 font-medium text-center">Qty</th>
+                <th className="pb-3 pr-4 font-medium">Status</th>
+                <th className="pb-3 pr-4 font-medium">Date</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
-              {filtered.length > 0 ? filtered.map(a => (
-                <tr key={a.id} className="hover:bg-surface-raised transition-colors">
-                  <td className="px-4 py-3 text-xs font-mono text-text-tertiary">
-                    {String(a.transaction_date ?? '').split('T')[0]}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="font-semibold text-sm text-text-primary">{a.username || '—'}</div>
-                    <div className="text-xs text-text-tertiary">{a.dept_name || 'General'}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="text-sm text-text-primary">{a.product_name}</div>
-                    <div className="text-xs font-mono text-text-tertiary">{a.sku}</div>
-                  </td>
-                  <td className="px-4 py-3 text-center font-bold text-text-primary">{a.quantity}</td>
-                  <td className="px-4 py-3">
-                    <span className={`badge ${a.type === 'issue' ? 'badge-danger' : 'badge-success'}`}>
-                      {a.type === 'issue' ? 'Issued' : 'Returned'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-text-secondary">{a.notes || '—'}</td>
-                </tr>
-              )) : (
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
                 <tr>
-                  <td colSpan={6} className="p-16 text-center">
-                    <span className="material-symbols-outlined text-5xl text-border mb-3 block">group</span>
-                    <p className="text-text-secondary font-medium">No allocations recorded yet.</p>
-                  </td>
+                  <td colSpan={5} className="py-8 text-center text-slate-400">Loading allocations…</td>
+                </tr>
+              ) : allocations.length > 0 ? (
+                allocations.map((entry) => (
+                  <tr key={entry.id} className="hover:bg-slate-50/80 transition">
+                    <td className="py-3 pr-4">
+                      <div className="font-semibold text-slate-900">{entry.username || 'Employee'}</div>
+                      <div className="text-xs text-slate-500">{entry.dept_name || 'General'}</div>
+                    </td>
+                    <td className="py-3 pr-4 font-medium text-slate-800">{entry.product_name}</td>
+                    <td className="py-3 pr-4 text-slate-900 font-bold text-center">{entry.quantity}</td>
+                    <td className="py-3 pr-4">
+                      <Badge tone={entry.type === 'issue' ? 'info' : 'success'}>
+                        {entry.type === 'issue' ? 'Issued' : 'Returned'}
+                      </Badge>
+                    </td>
+                    <td className="py-3 pr-4 text-slate-500 text-xs font-mono">
+                      {String(entry.transaction_date || '').split('T')[0]}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-slate-400">No allocation records found</td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-        {filtered.length > 0 && (
-          <div className="px-4 py-3 border-t border-border bg-surface">
-            <span className="text-xs text-text-tertiary">{filtered.length} records</span>
-          </div>
-        )}
       </div>
     </div>
-  );
+  )
 }

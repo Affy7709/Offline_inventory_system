@@ -1,67 +1,54 @@
-import { useState, useEffect } from 'react';
-import { getApiBase, apiFetch } from '../api';
-
-const MsgBox = ({ msg }) => {
-  if (!msg) return null;
-  const isErr = msg.type === 'error';
-  return (
-    <div className={`flex items-start gap-2 p-3 rounded-xl text-sm font-medium ${isErr ? 'bg-danger-bg text-danger-text' : 'bg-success-bg text-success-text'}`}>
-      <span className="material-symbols-outlined text-lg flex-shrink-0">
-        {isErr ? 'error' : 'check_circle'}
-      </span>
-      {msg.text}
-    </div>
-  );
-};
+import { useState, useEffect } from 'react'
+import { Badge } from '../components/ui/Badge'
+import { getApiBase, apiFetch } from '../api'
 
 export default function TransactionsPage() {
-  const [products, setProducts]       = useState([]);
-  const [allocations, setAllocations] = useState([]);
-  const [loading, setLoading]         = useState(true);
+  const [products, setProducts] = useState([])
+  const [allocations, setAllocations] = useState([])
+  const [loading, setLoading] = useState(true)
 
-  // Issue form state
-  const [issueProductId, setIssueProductId] = useState('');
-  const [issueQty, setIssueQty]             = useState(1);
-  const [issueTo, setIssueTo]               = useState('');
-  const [issuePurpose, setIssuePurpose]     = useState('');
-  const [issueLoading, setIssueLoading]     = useState(false);
-  const [issueMsg, setIssueMsg]             = useState(null);
+  // Issue Form state
+  const [issueProductId, setIssueProductId] = useState('')
+  const [issueQty, setIssueQty] = useState(1)
+  const [issueTo, setIssueTo] = useState('')
+  const [issuePurpose, setIssuePurpose] = useState('')
+  const [issueLoading, setIssueLoading] = useState(false)
+  const [issueSuccess, setIssueSuccess] = useState('')
+  const [issueError, setIssueError] = useState('')
 
-  // Return form state
-  const [returnSku, setReturnSku]           = useState('');
-  const [returnProduct, setReturnProduct]   = useState(null);
-  const [returnCondition, setReturnCondition] = useState('Good condition');
-  const [returnNotes, setReturnNotes]       = useState('');
-  const [returnLoading, setReturnLoading]   = useState(false);
-  const [returnMsg, setReturnMsg]           = useState(null);
+  // Return Form state
+  const [returnSku, setReturnSku] = useState('')
+  const [returnProduct, setReturnProduct] = useState(null)
+  const [returnCondition, setReturnCondition] = useState('Good condition')
+  const [returnNotes, setReturnNotes] = useState('')
+  const [returnLoading, setReturnLoading] = useState(false)
+  const [returnSuccess, setReturnSuccess] = useState('')
+  const [returnError, setReturnError] = useState('')
 
-  const base = getApiBase();
+  const base = getApiBase()
 
-  const loadAllocations = () =>
-    apiFetch(`${base}/index.php?action=allocations`)
-      .then(r => r.json())
-      .then(d => setAllocations(Array.isArray(d) ? d : []))
-      .catch(console.error);
+  const loadData = () => {
+    Promise.all([
+      apiFetch(`${base}/index.php?action=products`).then(r => r.json()).catch(() => []),
+      apiFetch(`${base}/index.php?action=allocations`).then(r => r.json()).catch(() => [])
+    ]).then(([prods, allocs]) => {
+      setProducts(Array.isArray(prods) ? prods : [])
+      setAllocations(Array.isArray(allocs) ? allocs : [])
+    }).finally(() => setLoading(false))
+  }
 
   useEffect(() => {
-    Promise.all([
-      apiFetch(`${base}/index.php?action=products`).then(r => r.json()),
-      apiFetch(`${base}/index.php?action=allocations`).then(r => r.json()),
-    ])
-      .then(([prods, allocs]) => {
-        setProducts(Array.isArray(prods) ? prods : []);
-        setAllocations(Array.isArray(allocs) ? allocs : []);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, []);
+    loadData()
+  }, [base])
 
-  // ── Issue handler ──────────────────────────────────────────
+  // Handle Issue
   const handleIssue = async (e) => {
-    e.preventDefault();
-    if (!issueProductId) return;
-    setIssueLoading(true);
-    setIssueMsg(null);
+    e.preventDefault()
+    if (!issueProductId) return
+    setIssueLoading(true)
+    setIssueError('')
+    setIssueSuccess('')
+
     try {
       const res = await apiFetch(`${base}/index.php?action=transaction`, {
         method: 'POST',
@@ -70,48 +57,55 @@ export default function TransactionsPage() {
           product_id: Number(issueProductId),
           type: 'issue',
           quantity: Number(issueQty),
-          notes: [issueTo && `Issued to: ${issueTo}`, issuePurpose && `Purpose: ${issuePurpose}`]
-            .filter(Boolean).join('. '),
-        }),
-      });
-      const data = await res.json();
+          notes: `Issued to: ${issueTo || 'General'} | Purpose: ${issuePurpose || 'Operational'}`
+        })
+      })
+      const data = await res.json()
       if (res.ok && data.success) {
-        setIssueMsg({ type: 'success', text: `Asset issued. New stock: ${data.new_stock}` });
-        setIssueProductId(''); setIssueQty(1); setIssueTo(''); setIssuePurpose('');
-        loadAllocations();
+        setIssueSuccess(`Asset issued successfully! Available stock: ${data.new_stock}`)
+        setIssueProductId('')
+        setIssueQty(1)
+        setIssueTo('')
+        setIssuePurpose('')
+        loadData()
       } else {
-        setIssueMsg({ type: 'error', text: data.error || 'Issue failed' });
+        setIssueError(data.error || 'Failed to issue asset')
       }
     } catch {
-      setIssueMsg({ type: 'error', text: 'Connection error' });
+      setIssueError('Network error')
     } finally {
-      setIssueLoading(false);
+      setIssueLoading(false)
     }
-  };
+  }
 
-  // ── Return lookup ──────────────────────────────────────────
+  // Lookup return product
   const handleReturnLookup = async (e) => {
-    e.preventDefault();
-    if (!returnSku.trim()) return;
-    setReturnProduct(null);
-    setReturnMsg(null);
-    try {
-      const res = await apiFetch(
-        `${base}/index.php?action=product_by_barcode&barcode=${encodeURIComponent(returnSku)}`
-      );
-      const data = await res.json();
-      if (res.ok) setReturnProduct(data);
-      else setReturnMsg({ type: 'error', text: data.error || 'Product not found' });
-    } catch {
-      setReturnMsg({ type: 'error', text: 'Connection error' });
-    }
-  };
+    e.preventDefault()
+    if (!returnSku.trim()) return
+    setReturnError('')
+    setReturnProduct(null)
 
-  // ── Return submit ──────────────────────────────────────────
-  const handleReturn = async () => {
-    if (!returnProduct) return;
-    setReturnLoading(true);
-    setReturnMsg(null);
+    try {
+      const res = await apiFetch(`${base}/index.php?action=product_by_barcode&barcode=${encodeURIComponent(returnSku.trim())}`)
+      const data = await res.json()
+      if (res.ok && data) {
+        setReturnProduct(data)
+      } else {
+        setReturnError(data.error || 'Product not found')
+      }
+    } catch {
+      setReturnError('Network error')
+    }
+  }
+
+  // Handle Return
+  const handleReturn = async (e) => {
+    e.preventDefault()
+    if (!returnProduct) return
+    setReturnLoading(true)
+    setReturnError('')
+    setReturnSuccess('')
+
     try {
       const res = await apiFetch(`${base}/index.php?action=transaction`, {
         method: 'POST',
@@ -120,143 +114,147 @@ export default function TransactionsPage() {
           product_id: returnProduct.id,
           type: 'return',
           quantity: 1,
-          notes: [`Condition: ${returnCondition}`, returnNotes].filter(Boolean).join('. '),
-        }),
-      });
-      const data = await res.json();
+          notes: `Condition: ${returnCondition} | Notes: ${returnNotes}`
+        })
+      })
+      const data = await res.json()
       if (res.ok && data.success) {
-        setReturnMsg({ type: 'success', text: `Return logged. New stock: ${data.new_stock}` });
-        setReturnProduct(null); setReturnSku(''); setReturnNotes('');
-        loadAllocations();
+        setReturnSuccess(`Asset returned successfully! New stock: ${data.new_stock}`)
+        setReturnProduct(null)
+        setReturnSku('')
+        setReturnNotes('')
+        loadData()
       } else {
-        setReturnMsg({ type: 'error', text: data.error || 'Return failed' });
+        setReturnError(data.error || 'Failed to log return')
       }
     } catch {
-      setReturnMsg({ type: 'error', text: 'Connection error' });
+      setReturnError('Network error')
     } finally {
-      setReturnLoading(false);
+      setReturnLoading(false)
     }
-  };
-
-  if (loading) return (
-    <div className="flex items-center justify-center h-64">
-      <span className="material-symbols-outlined animate-spin text-4xl text-primary">progress_activity</span>
-    </div>
-  );
+  }
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-text-primary tracking-tight">Issue & Return Management</h1>
-        <p className="text-sm text-text-secondary mt-1">Issue assets to departments or log returns</p>
+    <div className="space-y-6 p-4 md:p-6 font-sans">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-soft">
+        <h2 className="text-2xl font-semibold text-slate-900">Issue & return management</h2>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        {/* ── Issue Asset ── */}
-        <div className="card p-6">
-          <h2 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
-            <span className="w-8 h-8 rounded-lg bg-danger-bg flex items-center justify-center flex-shrink-0">
-              <span className="material-symbols-outlined text-danger" style={{ fontSize: '18px' }}>arrow_upward</span>
-            </span>
-            Issue Asset
-          </h2>
-          <form onSubmit={handleIssue} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Product</label>
-              <select
-                className="input-field"
-                value={issueProductId}
-                onChange={e => setIssueProductId(e.target.value)}
-                required
-              >
-                <option value="">Select product…</option>
-                {products.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} (Stock: {p.current_stock})
-                  </option>
-                ))}
-              </select>
+        {/* Issue Asset */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+          <h3 className="text-xl font-semibold text-slate-900 mb-4">Issue asset</h3>
+
+          {issueSuccess && (
+            <div className="p-3 mb-4 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-sm font-medium">
+              ✓ {issueSuccess}
             </div>
-            <div className="grid grid-cols-2 gap-3">
+          )}
+          {issueError && (
+            <div className="p-3 mb-4 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 text-sm font-medium">
+              ⚠ {issueError}
+            </div>
+          )}
+
+          <form onSubmit={handleIssue} className="space-y-4 text-sm">
+            <div className="grid gap-3 md:grid-cols-2">
               <div>
-                <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Quantity</label>
-                <input
-                  type="number" min="1"
-                  className="input-field"
+                <label className="mb-1.5 block text-slate-600 font-medium">Product</label>
+                <select 
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-slate-900 bg-white"
+                  value={issueProductId}
+                  onChange={e => setIssueProductId(e.target.value)}
+                  required
+                >
+                  <option value="">Select product…</option>
+                  {products.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} (Stock: {p.current_stock})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-slate-600 font-medium">Quantity</label>
+                <input 
+                  type="number" 
+                  min="1"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-slate-900" 
                   value={issueQty}
                   onChange={e => setIssueQty(e.target.value)}
                   required
                 />
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Issued To</label>
-                <input
-                  type="text"
-                  className="input-field"
-                  placeholder="Department / Person"
-                  value={issueTo}
-                  onChange={e => setIssueTo(e.target.value)}
-                />
-              </div>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Purpose</label>
-              <input
-                type="text"
-                className="input-field"
-                placeholder="e.g. Field ops support"
+              <label className="mb-1.5 block text-slate-600 font-medium">Issued to</label>
+              <input 
+                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-slate-900" 
+                placeholder="e.g. Operations Team / John Doe"
+                value={issueTo}
+                onChange={e => setIssueTo(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-slate-600 font-medium">Purpose</label>
+              <input 
+                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-slate-900" 
+                placeholder="Field ops support"
                 value={issuePurpose}
                 onChange={e => setIssuePurpose(e.target.value)}
               />
             </div>
-            <MsgBox msg={issueMsg} />
-            <button type="submit" disabled={issueLoading} className="btn-primary w-full justify-center py-3">
-              {issueLoading
-                ? <><span className="material-symbols-outlined animate-spin">progress_activity</span> Issuing…</>
-                : <><span className="material-symbols-outlined">arrow_upward</span> Issue Asset</>
-              }
+            <button 
+              type="submit" 
+              disabled={issueLoading}
+              className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800 transition disabled:opacity-50"
+            >
+              {issueLoading ? 'Issuing…' : 'Issue asset'}
             </button>
           </form>
         </div>
 
-        {/* ── Return Asset ── */}
-        <div className="card p-6">
-          <h2 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
-            <span className="w-8 h-8 rounded-lg bg-success-bg flex items-center justify-center flex-shrink-0">
-              <span className="material-symbols-outlined text-success" style={{ fontSize: '18px' }}>arrow_downward</span>
-            </span>
-            Return Asset
-          </h2>
-          <div className="space-y-4">
+        {/* Return Asset */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+          <h3 className="text-xl font-semibold text-slate-900 mb-4">Return asset</h3>
+
+          {returnSuccess && (
+            <div className="p-3 mb-4 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-sm font-medium">
+              ✓ {returnSuccess}
+            </div>
+          )}
+          {returnError && (
+            <div className="p-3 mb-4 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 text-sm font-medium">
+              ⚠ {returnError}
+            </div>
+          )}
+
+          <div className="space-y-4 text-sm">
             <form onSubmit={handleReturnLookup} className="flex gap-2">
-              <div className="flex-1 relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-text-tertiary" style={{ fontSize: '16px' }}>barcode_scanner</span>
-                <input
-                  type="text"
-                  className="input-field input-with-icon font-mono"
-                  placeholder="Enter SKU or barcode…"
-                  value={returnSku}
-                  onChange={e => setReturnSku(e.target.value)}
-                />
-              </div>
-              <button type="submit" className="btn-ghost">Lookup</button>
+              <input 
+                className="flex-1 rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-slate-900 font-mono text-xs" 
+                placeholder="Enter SKU or Barcode to return…"
+                value={returnSku}
+                onChange={e => setReturnSku(e.target.value)}
+                required
+              />
+              <button type="submit" className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-slate-700 hover:bg-slate-100 font-medium">
+                Lookup
+              </button>
             </form>
 
             {returnProduct && (
-              <div className="p-3 rounded-xl bg-success-bg/40 border border-success/20 flex items-center gap-3">
-                <span className="material-symbols-outlined text-success">check_circle</span>
-                <div>
-                  <div className="font-semibold text-sm text-text-primary">{returnProduct.name}</div>
-                  <div className="text-xs text-text-tertiary font-mono">{returnProduct.sku} • Stock: {returnProduct.current_stock}</div>
-                </div>
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900">
+                <div className="font-bold">{returnProduct.name}</div>
+                <div className="text-xs text-emerald-700 font-mono">SKU: {returnProduct.sku} • Current Stock: {returnProduct.current_stock}</div>
               </div>
             )}
 
             <div>
-              <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Condition</label>
-              <select
-                className="input-field"
+              <label className="mb-1.5 block text-slate-600 font-medium">Condition</label>
+              <select 
+                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-slate-900 bg-white"
                 value={returnCondition}
                 onChange={e => setReturnCondition(e.target.value)}
               >
@@ -266,90 +264,67 @@ export default function TransactionsPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Notes</label>
-              <textarea
-                className="input-field min-h-20 resize-none"
-                placeholder="Any notes about the returned item…"
+              <label className="mb-1.5 block text-slate-600 font-medium">Notes</label>
+              <textarea 
+                className="min-h-20 w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-slate-900" 
+                placeholder="Inspection notes or comments…"
                 value={returnNotes}
                 onChange={e => setReturnNotes(e.target.value)}
               />
             </div>
-            <MsgBox msg={returnMsg} />
-            <button
+            <button 
               onClick={handleReturn}
               disabled={!returnProduct || returnLoading}
-              className="w-full py-3 rounded-xl font-bold text-white bg-success hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+              className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 transition disabled:opacity-50"
             >
-              {returnLoading
-                ? <><span className="material-symbols-outlined animate-spin">progress_activity</span> Logging…</>
-                : <><span className="material-symbols-outlined">arrow_downward</span> Log Return</>
-              }
+              {returnLoading ? 'Logging return…' : 'Log return'}
             </button>
           </div>
         </div>
       </div>
 
-      {/* ── Allocation History ── */}
-      <div className="card overflow-hidden">
-        <div className="p-5 border-b border-border">
-          <h2 className="font-bold text-text-primary">Allocation History</h2>
-          <p className="text-xs text-text-tertiary mt-0.5">All issue and return transactions</p>
-        </div>
+      {/* Allocation history */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+        <h3 className="text-xl font-semibold text-slate-900 mb-4">Allocation history</h3>
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse" style={{ minWidth: '640px' }}>
-            <thead>
-              <tr className="bg-surface border-b border-border text-[11px] font-bold text-text-tertiary uppercase tracking-wider">
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">Item</th>
-                <th className="px-4 py-3">User / Dept</th>
-                <th className="px-4 py-3 text-center">Qty</th>
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Notes</th>
+          <table className="min-w-full text-left text-sm">
+            <thead className="text-slate-500 border-b border-slate-200">
+              <tr>
+                <th className="pb-3 pr-4 font-medium">Date</th>
+                <th className="pb-3 pr-4 font-medium">Item</th>
+                <th className="pb-3 pr-4 font-medium">Issued To / User</th>
+                <th className="pb-3 pr-4 font-medium">Qty</th>
+                <th className="pb-3 pr-4 font-medium">Status</th>
+                <th className="pb-3 pr-4 font-medium">Notes</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
-              {allocations.length > 0 ? allocations.map(a => (
-                <tr key={a.id} className="hover:bg-surface-raised transition-colors">
-                  <td className="px-4 py-3 text-xs font-mono text-text-tertiary">
-                    {String(a.transaction_date ?? '').split('T')[0]}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="font-semibold text-sm text-text-primary">{a.product_name}</div>
-                    <div className="text-xs font-mono text-text-tertiary">{a.sku}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="text-sm text-text-primary">{a.username || '—'}</div>
-                    <div className="text-xs text-text-tertiary">{a.dept_name || 'General'}</div>
-                  </td>
-                  <td className="px-4 py-3 text-center font-bold text-text-primary">{a.quantity}</td>
-                  <td className="px-4 py-3">
-                    <span className={`badge ${a.type === 'issue' ? 'badge-danger' : 'badge-success'}`}>
-                      <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>
-                        {a.type === 'issue' ? 'arrow_upward' : 'arrow_downward'}
-                      </span>
-                      {a.type === 'issue' ? 'ISSUE' : 'RETURN'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-text-secondary">{a.notes || '—'}</td>
-                </tr>
-              )) : (
+            <tbody className="divide-y divide-slate-100">
+              {allocations.length > 0 ? (
+                allocations.map((row) => (
+                  <tr key={row.id} className="hover:bg-slate-50/80 transition">
+                    <td className="py-3 pr-4 text-slate-500 font-mono text-xs">
+                      {String(row.transaction_date || '').split('T')[0] || '—'}
+                    </td>
+                    <td className="py-3 pr-4 font-semibold text-slate-900">{row.product_name}</td>
+                    <td className="py-3 pr-4 text-slate-700">{row.username || row.dept_name || 'Staff'}</td>
+                    <td className="py-3 pr-4 text-slate-900 font-bold">{row.quantity}</td>
+                    <td className="py-3 pr-4">
+                      <Badge tone={row.type === 'issue' ? 'info' : 'success'}>
+                        {row.type === 'issue' ? 'Issued' : 'Returned'}
+                      </Badge>
+                    </td>
+                    <td className="py-3 pr-4 text-slate-500 text-xs">{row.notes || '—'}</td>
+                  </tr>
+                ))
+              ) : (
                 <tr>
-                  <td colSpan={6} className="p-16 text-center">
-                    <span className="material-symbols-outlined text-5xl text-border mb-3 block">receipt_long</span>
-                    <p className="text-text-secondary font-medium">No allocations yet.</p>
-                    <p className="text-text-tertiary text-sm mt-1">Issue or return an asset above to see history.</p>
-                  </td>
+                  <td colSpan={6} className="py-8 text-center text-slate-400">No allocation history recorded yet</td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-        {allocations.length > 0 && (
-          <div className="px-4 py-3 border-t border-border bg-surface">
-            <span className="text-xs text-text-tertiary">{allocations.length} records</span>
-          </div>
-        )}
       </div>
     </div>
-  );
+  )
 }
