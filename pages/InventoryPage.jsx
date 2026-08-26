@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Search, Plus, Filter, Download, X, Package } from 'lucide-react'
 import { Badge } from '../components/ui/Badge'
 import { getApiBase, apiFetch } from '../api'
@@ -12,13 +13,19 @@ const statusTone = {
 }
 
 export default function InventoryPage() {
+  const [searchParams] = useSearchParams()
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(searchParams.get('q') || '')
   const [categoryFilter, setCategoryFilter] = useState('All categories')
   const [statusFilter, setStatusFilter] = useState('All statuses')
   const [showAddModal, setShowAddModal] = useState(false)
   const [categories, setCategories] = useState([])
+
+  useEffect(() => {
+    const query = searchParams.get('q')
+    if (query) setSearch(query)
+  }, [searchParams])
 
   // Form state
   const [newName, setNewName] = useState('')
