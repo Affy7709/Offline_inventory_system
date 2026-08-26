@@ -213,7 +213,7 @@ export default function Reports() {
                       <td className="px-4 py-3">
                         <div className="text-sm font-semibold text-text-primary">{log.product_name}</div>
                         <div className="text-xs text-text-tertiary font-mono flex items-center gap-1 mt-0.5">
-                          <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>qr_code</span>
+                          <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>barcode</span>
                           {log.sku}
                         </div>
                       </td>

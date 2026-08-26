@@ -12,7 +12,7 @@
 // ── Device fingerprint (offline, no library needed) ──────────
 let _cachedFingerprint = null;
 
-async function getDeviceFingerprint() {
+export async function getDeviceFingerprint() {
   if (_cachedFingerprint) return _cachedFingerprint;
 
   // Collect stable, non-PII browser attributes
@@ -32,14 +32,6 @@ async function getDeviceFingerprint() {
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   _cachedFingerprint = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   return _cachedFingerprint;
-}
-
-// ── SHA-256 helper (client-side password hashing) ────────────
-export async function sha256Hex(str) {
-  const encoded = new TextEncoder().encode(str);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 // ── API base URL (auto-detects local IP, works offline) ──────
@@ -82,11 +74,10 @@ export const apiFetch = async (url, options = {}) => {
 
   const res = await fetch(url, { ...options, headers });
 
+  // On 401: clear auth so PrivateRoute redirects cleanly via React Router
+  // Do NOT use window.location.href — that causes blank screen
   if (res.status === 401) {
     clearAuth();
-    if (window.location.pathname !== '/login') {
-      window.location.href = '/login';
-    }
   }
 
   return res;

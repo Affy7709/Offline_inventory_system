@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Download, X } from 'lucide-react';
-import { QRCodeCanvas } from 'qrcode.react';
+import Barcode from 'react-barcode';
+import { QRCodeSVG } from 'qrcode.react';
 import { getApiBase, apiFetch } from '../api';
 
 export default function Products() {
@@ -11,6 +12,7 @@ export default function Products() {
   
   const [showAdd, setShowAdd] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const barcodeRef = useRef();
   const qrRef = useRef();
 
   const [form, setForm] = useState({
@@ -51,15 +53,56 @@ export default function Products() {
     fetchData();
   };
 
+  const downloadBarcode = () => {
+    if (!barcodeRef.current) return;
+    const svg = barcodeRef.current.querySelector('svg');
+    if (!svg) return;
+    
+    // Convert SVG to canvas to download as PNG
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    const img = new Image();
+    img.setAttribute("src", "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svgData))));
+    img.onload = function() {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.fillStyle = "white";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        const url = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.download = `Barcode-${selectedProduct.sku}.png`;
+        link.href = url;
+        link.click();
+    };
+  };
+
   const downloadQR = () => {
     if (!qrRef.current) return;
-    const canvas = qrRef.current.querySelector('canvas');
-    if (!canvas) return;
-    const url = canvas.toDataURL('image/png');
-    const link = document.createElement('a');
-    link.download = `QR-${selectedProduct.sku}.png`;
-    link.href = url;
-    link.click();
+    const svg = qrRef.current.querySelector('svg');
+    if (!svg) return;
+    
+    // Convert SVG to canvas to download as PNG
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    const img = new Image();
+    img.setAttribute("src", "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svgData))));
+    img.onload = function() {
+        // add padding for QR code PNG
+        const padding = 20;
+        canvas.width = img.width + padding * 2;
+        canvas.height = img.height + padding * 2;
+        ctx.fillStyle = "white";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, padding, padding);
+        const url = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.download = `QR-${selectedProduct.sku}.png`;
+        link.href = url;
+        link.click();
+    };
   };
 
   const filtered = products.filter(p => 
@@ -121,8 +164,8 @@ export default function Products() {
                     {p.sku}
                   </div>
                 </div>
-                <div className="p-1.5 bg-surface-raised rounded-lg border border-border flex-shrink-0">
-                  <QRCodeCanvas value={p.qr_code || p.sku} size={44} />
+                <div className="p-1.5 bg-surface-raised rounded-lg border border-border flex-shrink-0 flex items-center justify-center max-w-[100px]">
+                  <Barcode value={p.barcode || p.sku} width={1} height={30} displayValue={false} margin={0} />
                 </div>
               </div>
               
@@ -158,39 +201,62 @@ export default function Products() {
               </button>
             </div>
             
-            {/* QR Section */}
-            <div className="bg-gradient-to-b from-surface-raised to-white p-8 flex flex-col items-center rounded-t-2xl relative">
-              <div ref={qrRef} className="p-4 bg-white rounded-2xl shadow-sm border border-border mb-5">
-                <QRCodeCanvas value={selectedProduct.qr_code || selectedProduct.sku} size={160} level="H" />
+            {/* Barcode & QR Section */}
+            <div className="bg-gradient-to-b from-surface-raised to-white p-6 flex flex-col items-center rounded-t-2xl relative">
+              
+              {/* Barcode */}
+              <div className="w-full flex flex-col items-center mb-4">
+                <span className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2">Scanner Gun (1D)</span>
+                <div ref={barcodeRef} className="p-3 bg-white rounded-xl shadow-sm border border-border overflow-hidden w-full flex justify-center">
+                  <Barcode value={selectedProduct.barcode || selectedProduct.sku} width={1.8} height={50} displayValue={true} margin={0} />
+                </div>
               </div>
-              <h2 className="text-lg font-bold text-text-primary text-center leading-tight">{selectedProduct.name}</h2>
+
+              {/* QR Code */}
+              <div className="w-full flex flex-col items-center mb-2">
+                <span className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2">Mobile Camera (2D)</span>
+                <div ref={qrRef} className="p-3 bg-white rounded-xl shadow-sm border border-border flex justify-center items-center">
+                  <QRCodeSVG value={selectedProduct.barcode || selectedProduct.sku} size={100} />
+                </div>
+              </div>
+
+              <h2 className="text-lg font-bold text-text-primary text-center leading-tight mt-3">{selectedProduct.name}</h2>
               <span className="badge badge-neutral mt-2 font-mono">{selectedProduct.sku}</span>
             </div>
             
             {/* Details */}
-            <div className="p-6 space-y-3">
-              <div className="flex justify-between items-center py-2.5 border-b border-border-light">
+            <div className="p-5 space-y-3">
+              <div className="flex justify-between items-center py-2 border-b border-border-light">
                 <span className="text-sm text-text-secondary">Category</span>
                 <span className="text-sm font-semibold text-text-primary">{selectedProduct.subcategory_name || 'General'}</span>
               </div>
-              <div className="flex justify-between items-center py-2.5 border-b border-border-light">
+              <div className="flex justify-between items-center py-2 border-b border-border-light">
                 <span className="text-sm text-text-secondary">Current Stock</span>
                 <span className={`text-sm font-bold ${Number(selectedProduct.current_stock) <= Number(selectedProduct.min_stock_level) ? 'text-danger' : 'text-success'}`}>
                   {selectedProduct.current_stock}
                 </span>
               </div>
-              <div className="flex justify-between items-center py-2.5">
+              <div className="flex justify-between items-center py-2">
                 <span className="text-sm text-text-secondary">Min Level</span>
                 <span className="text-sm font-semibold text-text-primary">{selectedProduct.min_stock_level}</span>
               </div>
               
-              <button 
-                onClick={downloadQR}
-                className="btn-primary w-full justify-center mt-4"
-              >
-                <Download size={18} />
-                Download QR Label
-              </button>
+              <div className="grid grid-cols-2 gap-2 mt-4">
+                <button 
+                  onClick={downloadBarcode}
+                  className="btn-primary w-full justify-center text-xs px-2"
+                >
+                  <Download size={14} />
+                  Barcode
+                </button>
+                <button 
+                  onClick={downloadQR}
+                  className="btn-primary w-full justify-center text-xs px-2 bg-purple-600 hover:bg-purple-700"
+                >
+                  <Download size={14} />
+                  QR Code
+                </button>
+              </div>
             </div>
           </div>
         </div>

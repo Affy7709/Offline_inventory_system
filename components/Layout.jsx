@@ -26,7 +26,7 @@ export default function Layout({ children }) {
     { name: 'Dashboard', path: '/', icon: 'space_dashboard' },
     { name: 'Products', path: '/products', icon: 'inventory_2' },
     { name: 'Categories', path: '/categories', icon: 'category' },
-    { name: 'Scanner', path: '/scanner', icon: 'qr_code_scanner' },
+    { name: 'Scanner', path: '/scanner', icon: 'barcode_scanner' },
     { name: 'Reports', path: '/reports', icon: 'assessment' },
   ];
 

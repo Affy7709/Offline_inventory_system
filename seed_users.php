@@ -8,9 +8,9 @@
 //    2. Edit seed_credentials.php with real passwords
 //    3. php seed_users.php
 //
-//  Authentication flow (Method 3):
-//    Client: sha256_hex( salt + plaintext_password ) → sends hash
-//    Server: bcrypt( sha256_hex )                  → stores hash
+//  Authentication flow:
+//    Client: sends plaintext password
+//    Server: bcrypt( plaintext_password )          → stores hash
 // ================================================================
 
 require __DIR__ . '/db.php';
@@ -34,14 +34,8 @@ foreach ($users as $u) {
         continue;
     }
 
-    // 1. Generate a unique per-user salt (32 random bytes = 64 hex chars)
-    $salt = bin2hex(random_bytes(32));
-
-    // 2. Simulate what the browser will do: sha256( salt + password )
-    $sha256Hex = hash('sha256', $salt . $u['password']);
-
-    // 3. Server stores bcrypt( sha256_hex ) — cost 12
-    $bcryptHash = password_hash($sha256Hex, PASSWORD_BCRYPT, ['cost' => 12]);
+    // Standard bcrypt — cost 12
+    $bcryptHash = password_hash($u['password'], PASSWORD_BCRYPT, ['cost' => 12]);
 
     // Upsert
     $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ?");
@@ -51,15 +45,15 @@ foreach ($users as $u) {
     if ($existing) {
         $pdo->prepare("
             UPDATE users
-               SET password_hash = ?, salt = ?, role_id = ?, department_id = ?, updated_at = NOW()
+               SET password_hash = ?, role_id = ?, department_id = ?, updated_at = NOW()
              WHERE username = ?
-        ")->execute([$bcryptHash, $salt, $u['role_id'], $u['department_id'], $u['username']]);
+        ")->execute([$bcryptHash, $u['role_id'], $u['department_id'], $u['username']]);
         echo "Updated : {$u['username']}\n";
     } else {
         $pdo->prepare("
-            INSERT INTO users (username, password_hash, salt, role_id, department_id)
-            VALUES (?, ?, ?, ?, ?)
-        ")->execute([$u['username'], $bcryptHash, $salt, $u['role_id'], $u['department_id']]);
+            INSERT INTO users (username, password_hash, role_id, department_id)
+            VALUES (?, ?, ?, ?)
+        ")->execute([$u['username'], $bcryptHash, $u['role_id'], $u['department_id']]);
         echo "Created : {$u['username']}\n";
     }
 
@@ -67,7 +61,7 @@ foreach ($users as $u) {
     $pdo->prepare("DELETE FROM user_tokens WHERE user_id = (SELECT id FROM users WHERE username = ?)")
         ->execute([$u['username']]);
 
-    echo "  OK — salt and bcrypt hash stored securely.\n\n";
+    echo "  OK — bcrypt hash stored securely.\n\n";
 }
 
 echo "=== Done. Passwords are NOT stored here — only in the DB. ===\n";

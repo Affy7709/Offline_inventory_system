@@ -57,7 +57,7 @@ export default function Scanner() {
     const apiBase = getApiBase();
 
     try {
-      const res = await apiFetch(`${apiBase}/index.php?action=product_by_qr&qr=${searchSku}`);
+      const res = await apiFetch(`${apiBase}/index.php?action=product_by_barcode&barcode=${searchSku}`);
       const data = await res.json();
       if (res.ok && data) {
         setProduct(data);
@@ -116,14 +116,14 @@ export default function Scanner() {
       {/* Header */}
       <div>
         <h1 className="text-2xl md:text-3xl font-bold text-text-primary tracking-tight">Scanner Terminal</h1>
-        <p className="text-sm text-text-secondary mt-1">Scan QR codes or enter SKU manually to issue or return items</p>
+        <p className="text-sm text-text-secondary mt-1">Scan barcodes or enter SKU manually to issue or return items</p>
       </div>
 
       {/* Search Box */}
       <div className="card p-5">
         <form onSubmit={(e) => { e.preventDefault(); handleSearch(); }} className="flex flex-col sm:flex-row gap-3">
           <div className="flex-1 relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-text-tertiary">qr_code_scanner</span>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-text-tertiary">barcode_scanner</span>
             <input 
               type="text" 
               value={sku} 
@@ -180,7 +180,7 @@ export default function Scanner() {
             <span className="material-symbols-outlined text-3xl">barcode_scanner</span>
           </div>
           <h3 className="text-lg font-bold text-text-primary mb-1">Ready to scan</h3>
-          <p className="text-text-secondary text-sm mb-6 max-w-sm">Use your device camera to scan a product's QR code or barcode</p>
+          <p className="text-text-secondary text-sm mb-6 max-w-sm">Use your device camera to scan a product's barcode</p>
           <button 
             onClick={startCamera} 
             className="btn-primary px-6 shadow-md shadow-primary/20"
@@ -201,7 +201,7 @@ export default function Scanner() {
                 <h2 className="text-xl font-bold text-text-primary leading-tight mb-2">{product.name}</h2>
                 <div className="flex items-center gap-2">
                   <span className="badge badge-neutral font-mono shadow-sm">
-                    <span className="material-symbols-outlined text-[14px]">qr_code</span>
+                    <span className="material-symbols-outlined text-[14px]">barcode</span>
                     {product.sku}
                   </span>
                   <span className="badge badge-info">

@@ -6,7 +6,7 @@
 
 ## ✨ Features
 
-- 📦 **Product & Category management** with QR code generation
+- 📦 **Product & Category management** with Barcode generation
 - 🔍 **QR / Barcode scanner** using device camera (mobile-friendly)
 - 📊 **Dashboard** with live stock stats and low-stock alerts
 - 📋 **Full audit trail** — every stock change logged with user, IP, device
@@ -44,7 +44,7 @@ Network:  plaintext password NEVER transmitted
 | Icons | Material Symbols (bundled locally via npm) |
 | Backend | PHP 8.x built-in server |
 | Database | PostgreSQL 14+ |
-| QR Scanning | html5-qrcode |
+| Barcode Scanning | html5-qrcode |
 | Charts | Recharts |
 | Export | jsPDF + SheetJS |
 
@@ -197,7 +197,7 @@ ip addr show   # or  ifconfig
 4. Accept the self-signed certificate warning (tap **Advanced → Proceed**)
 5. On the login page → tap **Server settings** → set API URL to `http://192.168.x.x:8000`
 
-> The frontend uses HTTPS (self-signed cert via `@vitejs/plugin-basic-ssl`) so the camera QR scanner works on mobile. The backend uses HTTP on port 8000.
+> The frontend uses HTTPS (self-signed cert via `@vitejs/plugin-basic-ssl`) so the camera barcode scanner works on mobile. The backend uses HTTP on port 8000.
 
 ---
 
@@ -220,7 +220,7 @@ ip addr show   # or  ifconfig
 ├── pages/
 │   ├── Login.jsx               # SHA-256 secure login
 │   ├── Dashboard.jsx           # Stats, low-stock chart, activity
-│   ├── Products.jsx            # Product grid + QR codes
+│   ├── Products.jsx            # Product grid + barcodes
 │   ├── Categories.jsx          # Category / subcategory management
 │   ├── Scanner.jsx             # QR/barcode scanner + issue/return
 │   └── Reports.jsx             # Transactions + Audit log tabs

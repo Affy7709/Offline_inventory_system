@@ -114,7 +114,7 @@ function authenticate_user(PDO $pdo): array {
  * logging in from a new device automatically kills the previous session.
  */
 function create_session(PDO $pdo, int $userId, string $deviceFp, string $ip): string {
-    $token     = bin2hex(random_bytes(64)); // 128-char hex token
+    $token     = bin2hex(random_bytes(32)); // 64-char hex token
     $expiresAt = date('Y-m-d H:i:s', strtotime('+12 hours'));
     $ua        = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500);
 
@@ -164,41 +164,19 @@ const LOCKOUT_MINUTES = 15;
 // ── Router ────────────────────────────────────────────────────
 switch ($action) {
 
-    // ── Step 1: client fetches the per-user salt before hashing ──
-    case 'get_salt':
-        $username = trim($_GET['username'] ?? '');
-        if (!$username) {
-            // Don't reveal whether user exists — return a dummy salt
-            echo json_encode(['salt' => bin2hex(random_bytes(32))]);
-            break;
-        }
-        $stmt = $pdo->prepare("SELECT salt FROM users WHERE username = ? AND is_active = TRUE");
-        $stmt->execute([$username]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        // Always return a salt (prevents username enumeration)
-        echo json_encode(['salt' => $row['salt'] ?? bin2hex(random_bytes(32))]);
-        break;
-
-    // ── Step 2: Login ─────────────────────────────────────────
+    // ── Login ─────────────────────────────────────────
     case 'login':
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') break;
 
         $body         = json_decode(file_get_contents('php://input'), true) ?? [];
         $username     = trim($body['username'] ?? '');
-        $clientHash   = trim($body['password_hash'] ?? ''); // sha256 hex from client
+        $password     = trim($body['password'] ?? ''); 
         $deviceFp     = get_device_fingerprint() ?: bin2hex(random_bytes(16));
         $ip           = get_client_ip();
 
-        if (!$username || !$clientHash) {
+        if (!$username || !$password) {
             http_response_code(400);
             echo json_encode(['error' => 'Username and password are required']);
-            break;
-        }
-
-        // Validate sha256 hex format (64 hex chars)
-        if (!preg_match('/^[a-f0-9]{64}$/', $clientHash)) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Invalid credential format']);
             break;
         }
 
@@ -221,8 +199,8 @@ switch ($action) {
             break;
         }
 
-        // Verify: bcrypt( sha256_hex ) === stored hash
-        if ($user && $user['is_active'] && password_verify($clientHash, $user['password_hash'])) {
+        // Verify: standard bcrypt check
+        if ($user && $user['is_active'] && password_verify($password, $user['password_hash'])) {
             // Reset failed attempts
             $pdo->prepare("UPDATE users SET failed_attempts=0, locked_until=NULL WHERE id=?")
                 ->execute([$user['id']]);
@@ -352,14 +330,14 @@ switch ($action) {
         } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $body  = json_decode(file_get_contents('php://input'), true) ?? [];
             $subId = !empty($body['subcategory_id']) ? (int)$body['subcategory_id'] : null;
-            $qr    = !empty($body['qr_code']) ? $body['qr_code'] : uniqid('QR-');
+            $barcode = !empty($body['barcode']) ? $body['barcode'] : 'BC-' . strtoupper(substr(uniqid(), -6));
             $stock = (int)($body['current_stock'] ?? 0);
             $min   = (int)($body['min_stock_level'] ?? 5);
 
             $pdo->prepare("
-                INSERT INTO products (subcategory_id, name, sku, qr_code, min_stock_level, current_stock)
+                INSERT INTO products (subcategory_id, name, sku, barcode, min_stock_level, current_stock)
                 VALUES (?,?,?,?,?,?)
-            ")->execute([$subId, $body['name'], $body['sku'], $qr, $min, $stock]);
+            ")->execute([$subId, $body['name'], $body['sku'], $barcode, $min, $stock]);
             $id = (int)$pdo->lastInsertId();
 
             audit($pdo, $user['id'], $user['username'], 'Added product', 'product', $id,
@@ -368,17 +346,17 @@ switch ($action) {
         }
         break;
 
-    // ── Product lookup by QR / SKU ────────────────────────────
-    case 'product_by_qr':
+    // ── Product lookup by Barcode / SKU ────────────────────────────
+    case 'product_by_barcode':
         $user = authenticate_user($pdo);
-        $qr   = trim($_GET['qr'] ?? '');
+        $barcode   = trim($_GET['barcode'] ?? '');
         $stmt = $pdo->prepare("
             SELECT p.*, s.name AS subcategory_name
               FROM products p
               LEFT JOIN subcategories s ON p.subcategory_id = s.id
-             WHERE p.qr_code = ? OR p.sku = ?
+             WHERE p.barcode = ? OR p.sku = ?
         ");
-        $stmt->execute([$qr, $qr]);
+        $stmt->execute([$barcode, $barcode]);
         $product = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($product) {
             echo json_encode($product);

@@ -11,11 +11,11 @@ if (file_exists(__DIR__ . '/config.php')) {
     $config = require __DIR__ . '/config.example.php';
 }
 
-$host     = $config['db_host'] ?? getenv('DB_HOST') ?: '127.0.0.1';
-$port     = $config['db_port'] ?? getenv('DB_PORT') ?: '5432';
-$dbname   = $config['db_name'] ?? getenv('DB_NAME') ?: 'inventory_db';
-$dbuser   = $config['db_user'] ?? getenv('DB_USER') ?: 'postgres';
-$dbpass   = $config['db_pass'] ?? getenv('DB_PASS') ?: '';
+$host = $config['db_host'] ?? getenv('DB_HOST') ?: '127.0.0.1';
+$port = $config['db_port'] ?? getenv('DB_PORT') ?: '5432';
+$dbname = $config['db_name'] ?? getenv('DB_NAME') ?: 'inventory_db';
+$dbuser = $config['db_user'] ?? getenv('DB_USER') ?: 'postgres';
+$dbpass = $config['db_pass'] ?? getenv('DB_PASS') ?: '';
 
 try {
     $pdo = new PDO("pgsql:host=$host;port=$port;dbname=$dbname", $dbuser, $dbpass);
@@ -87,6 +87,18 @@ try {
     $pdo->exec("ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS new_value TEXT");
     $pdo->exec("ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS ip_address VARCHAR(45)");
     $pdo->exec("ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS device_fingerprint VARCHAR(64)");
+
+    // ── Auto-migrate: rename qr_code to barcode in products table ──
+    $pdo->exec("
+        DO \$\$ BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name='products' AND column_name='qr_code'
+            ) THEN
+                ALTER TABLE products RENAME COLUMN qr_code TO barcode;
+            END IF;
+        END \$\$;
+    ");
 
 } catch (PDOException $e) {
     http_response_code(500);

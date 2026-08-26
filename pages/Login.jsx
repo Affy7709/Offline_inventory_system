@@ -1,15 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { sha256Hex, getApiBase, setApiBase, setAuthToken } from '../api';
+import { getApiBase, setApiBase, setAuthToken, getDeviceFingerprint } from '../api';
 
 // ================================================================
-//  Login.jsx — Method 3 secure login
+//  Login.jsx — Secure login
 //
 //  Flow:
-//   1. Fetch per-user salt  GET /index.php?action=get_salt&username=X
-//   2. Compute sha256( salt + plaintext_password ) in browser
-//   3. POST { username, password_hash: sha256hex } — plaintext NEVER sent
-//   4. Server verifies bcrypt(sha256hex) against stored hash
+//   1. POST { username, password }
+//   2. Server verifies bcrypt(password) against stored hash
 // ================================================================
 
 export default function Login() {
@@ -31,19 +29,16 @@ export default function Login() {
     const base = apiServer.trim().replace(/\/+$/, '');
 
     try {
-      // ── Step 1: fetch the per-user salt ──────────────────────
-      const saltRes  = await fetch(`${base}/index.php?action=get_salt&username=${encodeURIComponent(username)}`);
-      const saltData = await saltRes.json();
-      if (!saltData.salt) throw new Error('Could not retrieve security parameters');
+      const fp = await getDeviceFingerprint();
 
-      // ── Step 2: hash client-side — plaintext never leaves browser ──
-      const clientHash = await sha256Hex(saltData.salt + password);
-
-      // ── Step 3: send hashed credential ───────────────────────
+      // ── Send credential ───────────────────────
       const res  = await fetch(`${base}/index.php?action=login`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ username, password_hash: clientHash }),
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Device-Fingerprint': fp
+        },
+        body:    JSON.stringify({ username, password }),
       });
 
       const data = await res.json();
@@ -188,7 +183,7 @@ export default function Login() {
         <div className="flex items-center justify-center gap-2 mt-4">
           <span className="material-symbols-outlined text-indigo-400/50 text-sm">shield</span>
           <p className="text-center text-indigo-400/40 text-xs">
-            SHA-256 + bcrypt · End-to-end secure · Offline-ready
+            End-to-end secure · Offline-ready
           </p>
         </div>
       </div>

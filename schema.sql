@@ -58,7 +58,7 @@ CREATE TABLE products (
     subcategory_id  INTEGER REFERENCES subcategories(id) ON DELETE SET NULL,
     name            VARCHAR(150) NOT NULL,
     sku             VARCHAR(50)  UNIQUE NOT NULL,
-    qr_code         VARCHAR(100) UNIQUE,
+    barcode         VARCHAR(100) UNIQUE,
     min_stock_level INTEGER DEFAULT 5,
     current_stock   INTEGER DEFAULT 0,
     created_at      TIMESTAMP DEFAULT NOW(),

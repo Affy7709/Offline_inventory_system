@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -13,7 +14,8 @@ import { getAuthToken } from './api';
 function PrivateRoute({ children }) {
   const user = localStorage.getItem('user');
   const token = getAuthToken();
-  return (user && token) ? <Layout>{children}</Layout> : <Navigate to="/login" />;
+  if (!user || !token) return <Navigate to="/login" replace />;
+  return <Layout>{children}</Layout>;
 }
 
 export default function App() {

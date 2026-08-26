@@ -1,17 +1,21 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { getApiBase, apiFetch } from '../api';
 
 export default function Dashboard() {
   const [data, setData] = useState({});
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const apiBase = getApiBase();
     apiFetch(`${apiBase}/index.php?action=dashboard`)
-    .then(r => r.json())
-    .then(d => setData(d))
+    .then(r => {
+      if (r.status === 401) { navigate('/login', { replace: true }); return null; }
+      return r.json();
+    })
+    .then(d => { if (d) setData(d); })
     .catch(console.error)
     .finally(() => setLoading(false));
   }, []);
@@ -46,7 +50,7 @@ export default function Dashboard() {
           <p className="text-sm text-text-secondary mt-1">Overview of your warehouse inventory</p>
         </div>
         <Link to="/scanner" className="btn-primary w-full sm:w-auto justify-center">
-          <span className="material-symbols-outlined text-lg">qr_code_scanner</span>
+          <span className="material-symbols-outlined text-lg">barcode_scanner</span>
           Scan & Issue
         </Link>
       </div>
