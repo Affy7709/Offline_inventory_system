@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { FileDown, FileSpreadsheet, FileText, Download } from 'lucide-react'
+import { FileDown, FileSpreadsheet, FileText } from 'lucide-react'
 import jsPDF from 'jspdf'
-import 'jspdf-autotable'
+import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
 import { getApiBase, apiFetch } from '../api'
 
@@ -24,27 +24,38 @@ export default function ReportsPage() {
 
   // PDF Export
   const exportPDF = (title, data, headers) => {
-    const doc = new jsPDF({ orientation: 'landscape' })
-    doc.setFontSize(14)
-    doc.text(`Northstar AssetOps — ${title}`, 14, 14)
-    doc.setFontSize(9)
-    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 20)
-    doc.autoTable({
-      head: [headers],
-      body: data,
-      startY: 25,
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [15, 23, 42] }
-    })
-    doc.save(`${title.toLowerCase().replace(/\s+/g, '_')}.pdf`)
+    try {
+      const doc = new jsPDF({ orientation: 'landscape' })
+      doc.setFontSize(14)
+      doc.text(`Northstar AssetOps — ${title}`, 14, 14)
+      doc.setFontSize(9)
+      doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 20)
+      
+      autoTable(doc, {
+        head: [headers],
+        body: data,
+        startY: 25,
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [15, 23, 42] }
+      })
+
+      doc.save(`${title.toLowerCase().replace(/\s+/g, '_')}.pdf`)
+    } catch (err) {
+      console.error('PDF export failed:', err)
+      alert('Could not generate PDF')
+    }
   }
 
   // Excel Export
   const exportExcel = (title, jsonRecords) => {
-    const ws = XLSX.utils.json_to_sheet(jsonRecords)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, title)
-    XLSX.writeFile(wb, `${title.toLowerCase().replace(/\s+/g, '_')}.xlsx`)
+    try {
+      const ws = XLSX.utils.json_to_sheet(jsonRecords)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, title)
+      XLSX.writeFile(wb, `${title.toLowerCase().replace(/\s+/g, '_')}.xlsx`)
+    } catch (err) {
+      console.error('Excel export failed:', err)
+    }
   }
 
   const reportsList = [
