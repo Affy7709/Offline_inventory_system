@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getApiBase, apiFetch } from '../api';
+import { Folder, FolderOpen, Plus, X } from 'lucide-react';
+import { Badge } from '../components/ui/Badge';
 
 export default function Categories() {
   const [categories, setCategories] = useState([]);
@@ -8,9 +10,11 @@ export default function Categories() {
 
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [catName, setCatName] = useState('');
+  const [submittingCat, setSubmittingCat] = useState(false);
 
   const [showAddSub, setShowAddSub] = useState(false);
   const [subForm, setSubForm] = useState({ category_id: '', name: '' });
+  const [submittingSub, setSubmittingSub] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -36,6 +40,7 @@ export default function Categories() {
   const handleAddCategory = async (e) => {
     e.preventDefault();
     if (!catName.trim()) return;
+    setSubmittingCat(true);
     const apiBase = getApiBase();
 
     await apiFetch(`${apiBase}/index.php?action=categories`, {
@@ -45,12 +50,14 @@ export default function Categories() {
     });
     setCatName('');
     setShowAddCategory(false);
+    setSubmittingCat(false);
     fetchData();
   };
 
   const handleAddSubcategory = async (e) => {
     e.preventDefault();
     if (!subForm.category_id || !subForm.name.trim()) return;
+    setSubmittingSub(true);
     const apiBase = getApiBase();
 
     await apiFetch(`${apiBase}/index.php?action=subcategories`, {
@@ -60,147 +67,170 @@ export default function Categories() {
     });
     setSubForm({ category_id: '', name: '' });
     setShowAddSub(false);
+    setSubmittingSub(false);
     fetchData();
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <span className="material-symbols-outlined animate-spin text-4xl text-primary">progress_activity</span>
+      <div className="flex h-64 items-center justify-center text-slate-400">
+        Loading categories...
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 p-4 md:p-6 font-sans">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-text-primary tracking-tight">Categories</h1>
-        <p className="text-sm text-text-secondary mt-1">Organize products into groups and subgroups</p>
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-soft">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm text-slate-500">Classification</p>
+            <h2 className="text-2xl font-semibold text-slate-900">Categories & Subcategories</h2>
+          </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* ── Master Categories ── */}
-        <div className="card overflow-hidden">
-          <div className="p-5 border-b border-border flex items-center justify-between bg-surface">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center">
-                <span className="material-symbols-outlined text-white text-lg">folder</span>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Master Categories */}
+        <div className="flex h-[500px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-slate-50 p-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
+                <Folder size={20} />
               </div>
               <div>
-                <h2 className="text-base font-bold text-text-primary">Categories</h2>
-                <p className="text-xs text-text-tertiary">{categories.length} total</p>
+                <h2 className="text-base font-bold text-slate-900">Master Categories</h2>
+                <p className="text-xs text-slate-500">{categories.length} total</p>
               </div>
             </div>
-            <button onClick={() => setShowAddCategory(true)} className="btn-primary text-xs px-3 py-2">
-              <span className="material-symbols-outlined text-sm">add</span>
+            <button 
+              onClick={() => setShowAddCategory(true)} 
+              className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+            >
+              <Plus size={16} />
               Add
             </button>
           </div>
-          <div className="p-3 max-h-[420px] overflow-y-auto">
+          <div className="flex-1 overflow-y-auto bg-white p-3">
             {categories.length > 0 ? (
-              <div className="space-y-1">
+              <div className="space-y-2">
                 {categories.map(c => (
-                  <div key={c.id} className="flex items-center justify-between px-4 py-3 rounded-xl hover:bg-surface-raised transition-colors group">
+                  <div key={c.id} className="group flex items-center justify-between rounded-xl border border-slate-100 px-4 py-3 transition-colors hover:border-slate-300 hover:bg-slate-50/50">
                     <div className="flex items-center gap-3">
-                      <span className="material-symbols-outlined text-text-tertiary group-hover:text-primary transition-colors text-xl">folder</span>
-                      <span className="font-medium text-sm text-text-primary">{c.name}</span>
+                      <Folder size={18} className="text-slate-400 transition-colors group-hover:text-blue-500" />
+                      <span className="text-sm font-medium text-slate-900">{c.name}</span>
                     </div>
-                    <span className="badge badge-neutral text-xs font-mono">#{c.id}</span>
+                    <span className="rounded-lg bg-slate-100 px-2.5 py-1 font-mono text-xs text-slate-600">#{c.id}</span>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-12">
-                <span className="material-symbols-outlined text-4xl text-border block mb-2">folder_off</span>
-                <p className="text-sm text-text-tertiary">No categories yet</p>
+              <div className="py-12 text-center">
+                <Folder size={32} className="mx-auto mb-2 text-slate-300" />
+                <p className="text-sm text-slate-500">No categories yet</p>
               </div>
             )}
           </div>
         </div>
 
-        {/* ── Subcategories ── */}
-        <div className="card overflow-hidden">
-          <div className="p-5 border-b border-border flex items-center justify-between bg-surface">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-lg bg-purple-600 flex items-center justify-center">
-                <span className="material-symbols-outlined text-white text-lg">folder_open</span>
+        {/* Subcategories */}
+        <div className="flex h-[500px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-slate-50 p-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100 text-purple-600">
+                <FolderOpen size={20} />
               </div>
               <div>
-                <h2 className="text-base font-bold text-text-primary">Subcategories</h2>
-                <p className="text-xs text-text-tertiary">{subcategories.length} total</p>
+                <h2 className="text-base font-bold text-slate-900">Subcategories</h2>
+                <p className="text-xs text-slate-500">{subcategories.length} total</p>
               </div>
             </div>
-            <button onClick={() => setShowAddSub(true)} className="btn-primary text-xs px-3 py-2">
-              <span className="material-symbols-outlined text-sm">add</span>
+            <button 
+              onClick={() => setShowAddSub(true)} 
+              className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+            >
+              <Plus size={16} />
               Add
             </button>
           </div>
-          <div className="p-3 max-h-[420px] overflow-y-auto">
+          <div className="flex-1 overflow-y-auto bg-white p-3">
             {subcategories.length > 0 ? (
-              <div className="space-y-1">
+              <div className="space-y-2">
                 {subcategories.map(s => (
-                  <div key={s.id} className="flex items-center justify-between px-4 py-3 rounded-xl hover:bg-surface-raised transition-colors group">
+                  <div key={s.id} className="group flex items-center justify-between rounded-xl border border-slate-100 px-4 py-3 transition-colors hover:border-slate-300 hover:bg-slate-50/50">
                     <div className="min-w-0">
-                      <div className="font-medium text-sm text-text-primary truncate">{s.name}</div>
-                      <div className="text-xs text-text-tertiary mt-0.5 flex items-center gap-1">
-                        <span className="material-symbols-outlined text-xs">subdirectory_arrow_right</span>
+                      <div className="truncate text-sm font-medium text-slate-900">{s.name}</div>
+                      <div className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
+                        <span className="text-[10px]">↳</span>
                         {s.category_name}
                       </div>
                     </div>
-                    <span className="badge badge-neutral text-xs font-mono flex-shrink-0">#{s.id}</span>
+                    <span className="shrink-0 rounded-lg bg-slate-100 px-2.5 py-1 font-mono text-xs text-slate-600">#{s.id}</span>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-12">
-                <span className="material-symbols-outlined text-4xl text-border block mb-2">folder_off</span>
-                <p className="text-sm text-text-tertiary">No subcategories yet</p>
+              <div className="py-12 text-center">
+                <FolderOpen size={32} className="mx-auto mb-2 text-slate-300" />
+                <p className="text-sm text-slate-500">No subcategories yet</p>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* ── Add Category Modal ── */}
+      {/* Add Category Modal */}
       {showAddCategory && (
-        <div className="modal-overlay" onClick={() => setShowAddCategory(false)}>
-          <div className="modal-content max-w-sm p-6" onClick={e => e.stopPropagation()}>
-            <h2 className="text-xl font-bold text-text-primary mb-1">New Category</h2>
-            <p className="text-sm text-text-tertiary mb-5">Add a master product category</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-900">New Category</h3>
+              <button onClick={() => setShowAddCategory(false)} className="rounded-lg p-1 text-slate-400 hover:text-slate-600">
+                <X size={20} />
+              </button>
+            </div>
+            <p className="mb-5 text-sm text-slate-500">Add a master product category</p>
             <form onSubmit={handleAddCategory} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Category Name</label>
+                <label className="mb-1 block font-semibold text-slate-700">Category Name</label>
                 <input 
                   type="text" 
                   value={catName} 
                   placeholder="e.g. Electronics" 
-                  className="input-field" 
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-900" 
                   required 
                   autoFocus 
                   onChange={e => setCatName(e.target.value)} 
                 />
               </div>
-              <div className="flex justify-end gap-3 pt-4 border-t border-border">
-                <button type="button" onClick={() => setShowAddCategory(false)} className="btn-ghost">Cancel</button>
-                <button type="submit" className="btn-primary">Save Category</button>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setShowAddCategory(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50">Cancel</button>
+                <button type="submit" disabled={submittingCat} className="rounded-xl bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50 hover:bg-slate-800">
+                  {submittingCat ? 'Saving...' : 'Save Category'}
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* ── Add Subcategory Modal ── */}
+      {/* Add Subcategory Modal */}
       {showAddSub && (
-        <div className="modal-overlay" onClick={() => setShowAddSub(false)}>
-          <div className="modal-content max-w-sm p-6" onClick={e => e.stopPropagation()}>
-            <h2 className="text-xl font-bold text-text-primary mb-1">New Subcategory</h2>
-            <p className="text-sm text-text-tertiary mb-5">Create under a parent category</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-900">New Subcategory</h3>
+              <button onClick={() => setShowAddSub(false)} className="rounded-lg p-1 text-slate-400 hover:text-slate-600">
+                <X size={20} />
+              </button>
+            </div>
+            <p className="mb-5 text-sm text-slate-500">Create under a parent category</p>
             <form onSubmit={handleAddSubcategory} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Parent Category</label>
+                <label className="mb-1 block text-sm font-semibold text-slate-700">Parent Category</label>
                 <select 
-                  className="input-field" 
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-900" 
                   required 
                   value={subForm.category_id} 
                   onChange={e => setSubForm({ ...subForm, category_id: e.target.value })}
@@ -210,19 +240,21 @@ export default function Categories() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Subcategory Name</label>
+                <label className="mb-1 block text-sm font-semibold text-slate-700">Subcategory Name</label>
                 <input 
                   type="text" 
                   value={subForm.name} 
                   placeholder="e.g. Scanners" 
-                  className="input-field" 
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-900" 
                   required 
                   onChange={e => setSubForm({ ...subForm, name: e.target.value })} 
                 />
               </div>
-              <div className="flex justify-end gap-3 pt-4 border-t border-border">
-                <button type="button" onClick={() => setShowAddSub(false)} className="btn-ghost">Cancel</button>
-                <button type="submit" className="btn-primary">Save</button>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setShowAddSub(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50">Cancel</button>
+                <button type="submit" disabled={submittingSub} className="rounded-xl bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50 hover:bg-slate-800">
+                  {submittingSub ? 'Saving...' : 'Save Subcategory'}
+                </button>
               </div>
             </form>
           </div>

@@ -82,3 +82,22 @@ export const apiFetch = async (url, options = {}) => {
 
   return res;
 };
+
+// ── Application config & navigation ─────────────────────────
+export const company = {
+  name: "Northstar AssetOps",
+  short: "NAO",
+};
+
+export const navigation = [
+  { name: "Dashboard", icon: "LayoutDashboard", path: "/" },
+  { name: "Inventory", icon: "Package2", path: "/inventory" },
+  { name: "Categories", icon: "Tags", path: "/categories" },
+  { name: "QR / Barcode", icon: "ScanLine", path: "/qr" },
+  { name: "Issues & Returns", icon: "ArrowLeftRight", path: "/transactions" },
+  { name: "Stock", icon: "Boxes", path: "/stock" },
+  { name: "Allocations", icon: "Users", path: "/allocations" },
+  { name: "Reports", icon: "FileBarChart2", path: "/reports" },
+  { name: "Audit Logs", icon: "ClipboardList", path: "/audit" },
+];
+

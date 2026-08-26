@@ -10,8 +10,8 @@ import TransactionsPage from './pages/TransactionsPage';
 import AllocationsPage  from './pages/AllocationsPage';
 import QrPage           from './pages/QrPage';
 import ReportsPage      from './pages/ReportsPage';
-import RolesPage        from './pages/RolesPage';
 import AuditPage        from './pages/AuditPage';
+import Categories       from './pages/Categories';
 
 import './App.css';
 import { getAuthToken } from './api';
@@ -29,15 +29,15 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
 
-        {/* All 9 Pages from Inventory */}
+        {/* All 10 Pages from Inventory */}
         <Route path="/"             element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
         <Route path="/inventory"    element={<PrivateRoute><InventoryPage /></PrivateRoute>} />
+        <Route path="/categories"   element={<PrivateRoute><Categories /></PrivateRoute>} />
         <Route path="/qr"           element={<PrivateRoute><QrPage /></PrivateRoute>} />
         <Route path="/transactions" element={<PrivateRoute><TransactionsPage /></PrivateRoute>} />
         <Route path="/stock"        element={<PrivateRoute><StockPage /></PrivateRoute>} />
         <Route path="/allocations"  element={<PrivateRoute><AllocationsPage /></PrivateRoute>} />
         <Route path="/reports"      element={<PrivateRoute><ReportsPage /></PrivateRoute>} />
-        <Route path="/roles"        element={<PrivateRoute><RolesPage /></PrivateRoute>} />
         <Route path="/audit"        element={<PrivateRoute><AuditPage /></PrivateRoute>} />
 
         {/* Catch-all redirect to Dashboard */}

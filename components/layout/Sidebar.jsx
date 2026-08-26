@@ -1,7 +1,6 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
-import { company, navigation } from "../../data/mockData";
-import { clearAuth, apiFetch, getApiBase } from "../../api";
+import { clearAuth, apiFetch, getApiBase, company, navigation } from "../../api";
 
 export default function Sidebar({
   collapsed,

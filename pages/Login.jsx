@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getApiBase, setApiBase, setAuthToken, getDeviceFingerprint } from '../api';
 import { Lock, User, Server, Eye, EyeOff, ShieldCheck } from 'lucide-react';
-import { company } from '../data/mockData';
+import { company } from '../api';
 
 export default function Login() {
   const [username,   setUsername]   = useState('');

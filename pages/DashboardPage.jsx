@@ -20,7 +20,8 @@ export default function DashboardPage() {
 
   const base = getApiBase()
 
-  useEffect(() => {
+  const fetchDashboardData = (silent = false) => {
+    if (!silent) setLoading(true)
     Promise.all([
       apiFetch(`${base}/index.php?action=dashboard`).then(r => r.json()).catch(() => ({})),
       apiFetch(`${base}/index.php?action=stock_summary`).then(r => r.json()).catch(() => ({}))
@@ -29,7 +30,21 @@ export default function DashboardPage() {
       setData(dash || {})
       setStockData(stock || {})
     })
-    .finally(() => setLoading(false))
+    .finally(() => { if (!silent) setLoading(false) })
+  }
+
+  useEffect(() => {
+    fetchDashboardData(false)
+
+    // Live multi-device auto-sync polling
+    const interval = setInterval(() => fetchDashboardData(true), 4000)
+    const onFocus = () => fetchDashboardData(true)
+    window.addEventListener('focus', onFocus)
+
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('focus', onFocus)
+    }
   }, [base])
 
   const totalProducts = Number(data?.totalProducts || stockData?.products?.length || 0)

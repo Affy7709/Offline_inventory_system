@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Camera, Search, QrCode, Download, Printer, X } from 'lucide-react'
+import { Camera, Search, QrCode, Download, Printer, X, ArrowUpRight, ArrowDownLeft } from 'lucide-react'
 import { Html5QrcodeScanner, Html5QrcodeScanType } from 'html5-qrcode'
 import { getApiBase, apiFetch } from '../api'
 
@@ -10,6 +10,22 @@ export default function QrPage() {
   const [loading, setLoading] = useState(false)
   const [showCamera, setShowCamera] = useState(false)
   const scannerRef = useRef(null)
+
+  // Transaction form states
+  const [activeTab, setActiveTab] = useState('issue') // 'issue' | 'return'
+  const [txQty, setTxQty] = useState(1)
+  
+  // Issue states
+  const [issuedTo, setIssuedTo] = useState('')
+  const [purpose, setPurpose] = useState('')
+
+  // Return states
+  const [condition, setCondition] = useState('Good Condition')
+  const [returnNotes, setReturnNotes] = useState('')
+
+  const [txLoading, setTxLoading] = useState(false)
+  const [txSuccess, setTxSuccess] = useState('')
+  const [txError, setTxError] = useState('')
 
   const base = getApiBase()
 
@@ -47,6 +63,13 @@ export default function QrPage() {
     setError('')
     setProduct(null)
     setLoading(true)
+    setTxSuccess('')
+    setTxError('')
+    setTxQty(1)
+    setIssuedTo('')
+    setPurpose('')
+    setReturnNotes('')
+    setCondition('Good Condition')
 
     try {
       const res = await apiFetch(`${base}/index.php?action=product_by_barcode&barcode=${encodeURIComponent(searchCode.trim())}`)
@@ -60,6 +83,81 @@ export default function QrPage() {
       setError('Connection error')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleIssueSubmit = async (e) => {
+    e.preventDefault()
+    if (!product) return
+    if (!issuedTo.trim()) {
+      setTxError('Issued To is a mandatory field')
+      return
+    }
+    setTxLoading(true)
+    setTxSuccess('')
+    setTxError('')
+
+    const compiledNotes = `Issued To: ${issuedTo.trim()}${purpose.trim() ? ` | Purpose: ${purpose.trim()}` : ''}`
+
+    try {
+      const res = await apiFetch(`${base}/index.php?action=transaction`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          product_id: product.id,
+          type: 'issue',
+          quantity: txQty,
+          notes: compiledNotes
+        })
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setTxSuccess(`Successfully issued ${txQty} unit(s) to ${issuedTo.trim()}!`)
+        setProduct(prev => ({ ...prev, current_stock: data.new_stock }))
+        setIssuedTo('')
+        setPurpose('')
+      } else {
+        setTxError(data.error || 'Transaction failed')
+      }
+    } catch {
+      setTxError('Failed to execute transaction')
+    } finally {
+      setTxLoading(false)
+    }
+  }
+
+  const handleReturnSubmit = async (e) => {
+    e.preventDefault()
+    if (!product) return
+    setTxLoading(true)
+    setTxSuccess('')
+    setTxError('')
+
+    const compiledNotes = `Condition: ${condition}${returnNotes.trim() ? ` | Notes: ${returnNotes.trim()}` : ''}`
+
+    try {
+      const res = await apiFetch(`${base}/index.php?action=transaction`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          product_id: product.id,
+          type: 'return',
+          quantity: txQty,
+          notes: compiledNotes
+        })
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setTxSuccess(`Successfully returned ${txQty} unit(s)!`)
+        setProduct(prev => ({ ...prev, current_stock: data.new_stock }))
+        setReturnNotes('')
+      } else {
+        setTxError(data.error || 'Transaction failed')
+      }
+    } catch {
+      setTxError('Failed to execute transaction')
+    } finally {
+      setTxLoading(false)
     }
   }
 
@@ -178,6 +276,138 @@ export default function QrPage() {
                 <span>Available Quantity</span>
                 <span className="text-lg">{product.current_stock} units</span>
               </div>
+            </div>
+
+            {/* Quick Stock Action Section */}
+            <div className="border-t border-slate-200 pt-4 mt-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <h5 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Quick Stock Update</h5>
+                
+                {/* Tab Switcher */}
+                <div className="flex p-0.5 bg-slate-200/80 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => { setActiveTab('issue'); setTxError(''); setTxSuccess(''); }}
+                    className={`px-3 py-1 text-xs font-semibold rounded-lg transition ${activeTab === 'issue' ? 'bg-amber-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                  >
+                    Issue Stock
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setActiveTab('return'); setTxError(''); setTxSuccess(''); }}
+                    className={`px-3 py-1 text-xs font-semibold rounded-lg transition ${activeTab === 'return' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                  >
+                    Return Stock
+                  </button>
+                </div>
+              </div>
+
+              {activeTab === 'issue' ? (
+                <form onSubmit={handleIssueSubmit} className="space-y-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-[10px] text-slate-400 uppercase font-semibold block mb-1">Quantity *</label>
+                      <input 
+                        type="number" 
+                        min="1" 
+                        value={txQty}
+                        onChange={e => setTxQty(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-900 outline-none focus:border-slate-900 bg-white"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-[10px] text-slate-400 uppercase font-semibold block mb-1">Issued To *</label>
+                      <input 
+                        type="text" 
+                        required
+                        placeholder="e.g. John Doe / Ops Team"
+                        value={issuedTo}
+                        onChange={e => setIssuedTo(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm text-slate-900 outline-none focus:border-slate-900 bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-slate-400 uppercase font-semibold block mb-1">Purpose (Optional)</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Site Inspection / Workstation setup"
+                      value={purpose}
+                      onChange={e => setPurpose(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm text-slate-900 outline-none focus:border-slate-900 bg-white"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={txLoading || Number(product.current_stock) < txQty}
+                    className="w-full rounded-xl bg-amber-600 py-2.5 text-xs font-semibold text-white hover:bg-amber-700 transition disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
+                  >
+                    <ArrowUpRight size={14} />
+                    Confirm Issue ({txQty} {txQty === 1 ? 'unit' : 'units'})
+                  </button>
+                </form>
+              ) : (
+                <form onSubmit={handleReturnSubmit} className="space-y-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-[10px] text-slate-400 uppercase font-semibold block mb-1">Quantity *</label>
+                      <input 
+                        type="number" 
+                        min="1" 
+                        value={txQty}
+                        onChange={e => setTxQty(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-900 outline-none focus:border-slate-900 bg-white"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-[10px] text-slate-400 uppercase font-semibold block mb-1">Condition</label>
+                      <select
+                        value={condition}
+                        onChange={e => setCondition(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm text-slate-900 outline-none focus:border-slate-900 bg-white"
+                      >
+                        <option value="Good Condition">Good Condition</option>
+                        <option value="Minor Wear">Minor Wear</option>
+                        <option value="Needs Repair">Needs Repair</option>
+                        <option value="Damaged">Damaged</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-slate-400 uppercase font-semibold block mb-1">Notes (Optional)</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Returned after project completion"
+                      value={returnNotes}
+                      onChange={e => setReturnNotes(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm text-slate-900 outline-none focus:border-slate-900 bg-white"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={txLoading}
+                    className="w-full rounded-xl bg-emerald-600 py-2.5 text-xs font-semibold text-white hover:bg-emerald-700 transition disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
+                  >
+                    <ArrowDownLeft size={14} />
+                    Confirm Return ({txQty} {txQty === 1 ? 'unit' : 'units'})
+                  </button>
+                </form>
+              )}
+
+              {txSuccess && (
+                <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium">
+                  ✓ {txSuccess}
+                </div>
+              )}
+              {txError && (
+                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium">
+                  ⚠ {txError}
+                </div>
+              )}
             </div>
           </div>
         ) : (

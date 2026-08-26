@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom'
 import { Search, Plus, Filter, Download, X, Package } from 'lucide-react'
 import { Badge } from '../components/ui/Badge'
 import { getApiBase, apiFetch } from '../api'
+import Barcode from 'react-barcode'
+import { QRCodeSVG } from 'qrcode.react'
 
 const statusTone = {
   'In Stock': 'success',
@@ -21,6 +23,17 @@ export default function InventoryPage() {
   const [statusFilter, setStatusFilter] = useState('All statuses')
   const [showAddModal, setShowAddModal] = useState(false)
   const [categories, setCategories] = useState([])
+  const [subcategories, setSubcategories] = useState([])
+  const [selectedProduct, setSelectedProduct] = useState(null)
+  
+  const [currentUser, setCurrentUser] = useState(null)
+
+  useEffect(() => {
+    try {
+      const u = JSON.parse(localStorage.getItem('user'))
+      if (u) setCurrentUser(u)
+    } catch {}
+  }, [])
 
   useEffect(() => {
     const query = searchParams.get('q')
@@ -31,27 +44,42 @@ export default function InventoryPage() {
   const [newName, setNewName] = useState('')
   const [newSku, setNewSku] = useState('')
   const [newBarcode, setNewBarcode] = useState('')
+  const [newSubcategory, setNewSubcategory] = useState('')
   const [newStock, setNewStock] = useState(10)
   const [newMinStock, setNewMinStock] = useState(5)
   const [submitting, setSubmitting] = useState(false)
 
   const base = getApiBase()
 
-  const loadProducts = () => {
-    setLoading(true)
+  const loadProducts = (silent = false) => {
+    if (!silent) setLoading(true)
     apiFetch(`${base}/index.php?action=products`)
       .then(r => r.json())
       .then(d => setProducts(Array.isArray(d) ? d : []))
       .catch(console.error)
-      .finally(() => setLoading(false))
+      .finally(() => { if (!silent) setLoading(false) })
   }
 
   useEffect(() => {
-    loadProducts()
+    loadProducts(false)
     apiFetch(`${base}/index.php?action=categories`)
       .then(r => r.json())
       .then(d => setCategories(Array.isArray(d) ? d : []))
       .catch(console.error)
+    apiFetch(`${base}/index.php?action=subcategories`)
+      .then(r => r.json())
+      .then(d => setSubcategories(Array.isArray(d) ? d : []))
+      .catch(console.error)
+
+    // Live multi-device auto-sync polling
+    const interval = setInterval(() => loadProducts(true), 4000)
+    const onFocus = () => loadProducts(true)
+    window.addEventListener('focus', onFocus)
+
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('focus', onFocus)
+    }
   }, [base])
 
   const getProductStatus = (p) => {
@@ -75,6 +103,7 @@ export default function InventoryPage() {
           name: newName,
           sku: newSku,
           barcode: newBarcode || newSku,
+          subcategory_id: newSubcategory || null,
           current_stock: Number(newStock),
           min_stock_level: Number(newMinStock),
         })
@@ -86,6 +115,7 @@ export default function InventoryPage() {
         setNewName('')
         setNewSku('')
         setNewBarcode('')
+        setNewSubcategory('')
         setNewStock(10)
         setNewMinStock(5)
         loadProducts()
@@ -96,6 +126,24 @@ export default function InventoryPage() {
       alert('Error connecting to backend server')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleDeleteProduct = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this product and its stock data?")) return
+    try {
+      const res = await apiFetch(`${base}/index.php?action=products&id=${id}`, {
+        method: 'DELETE'
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setSelectedProduct(null)
+        loadProducts()
+      } else {
+        alert(data.error || 'Failed to delete product')
+      }
+    } catch {
+      alert('Error connecting to backend server')
     }
   }
 
@@ -175,11 +223,11 @@ export default function InventoryPage() {
                 filtered.map((product) => {
                   const status = getProductStatus(product)
                   return (
-                    <tr key={product.id} className="hover:bg-slate-50/80 transition">
+                    <tr key={product.id} onClick={() => setSelectedProduct(product)} className="hover:bg-slate-50/80 transition cursor-pointer">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600 font-bold">
-                            <Package size={20} />
+                          <div className="h-10 w-10 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 p-1">
+                            <QRCodeSVG value={product.barcode || product.sku || 'N/A'} size={32} />
                           </div>
                           <div>
                             <div className="font-semibold text-slate-900">{product.name}</div>
@@ -206,6 +254,63 @@ export default function InventoryPage() {
           </table>
         </div>
       </div>
+
+      {/* View Product Modal */}
+      {selectedProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={() => setSelectedProduct(null)}>
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-200" onClick={e => e.stopPropagation()}>
+            <div className="relative bg-slate-50 p-6 flex flex-col items-center border-b border-slate-100">
+              <button onClick={() => setSelectedProduct(null)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 rounded-lg bg-white shadow-sm border border-slate-200 transition-colors">
+                <X size={16} />
+              </button>
+              
+              <div className="w-full flex flex-col items-center mb-4">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Barcode</span>
+                <div className="p-3 bg-white rounded-xl shadow-sm border border-slate-200 w-full flex justify-center">
+                  <Barcode value={selectedProduct.barcode || selectedProduct.sku || 'N/A'} width={1.5} height={40} displayValue={true} margin={0} />
+                </div>
+              </div>
+
+              <div className="w-full flex flex-col items-center mb-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">QR Code</span>
+                <div className="p-3 bg-white rounded-xl shadow-sm border border-slate-200 flex justify-center items-center">
+                  <QRCodeSVG value={selectedProduct.barcode || selectedProduct.sku || 'N/A'} size={100} />
+                </div>
+              </div>
+
+              <h2 className="text-lg font-bold text-slate-900 text-center leading-tight mt-3">{selectedProduct.name}</h2>
+              <span className="rounded bg-slate-200 px-2 py-0.5 text-xs font-mono text-slate-700 mt-2">{selectedProduct.sku}</span>
+            </div>
+            
+            <div className="p-5 space-y-3 bg-white">
+              <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                <span className="text-sm text-slate-500">Category</span>
+                <span className="text-sm font-semibold text-slate-900">{selectedProduct.subcategory_name || 'General'}</span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                <span className="text-sm text-slate-500">Current Stock</span>
+                <span className={`text-sm font-bold ${Number(selectedProduct.current_stock) <= Number(selectedProduct.min_stock_level) ? 'text-red-600' : 'text-emerald-600'}`}>
+                  {selectedProduct.current_stock}
+                </span>
+              </div>
+              <div className="flex justify-between items-center py-2">
+                <span className="text-sm text-slate-500">Min Threshold</span>
+                <span className="text-sm font-semibold text-slate-900">{selectedProduct.min_stock_level}</span>
+              </div>
+              {currentUser?.role_name === 'Admin' && (
+                <div className="pt-3 mt-3 border-t border-slate-100 flex justify-end">
+                  <button 
+                    onClick={() => handleDeleteProduct(selectedProduct.id)}
+                    className="w-full rounded-xl bg-red-50 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-100 transition"
+                  >
+                    Delete Product & Stock
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Product Modal */}
       {showAddModal && (
@@ -253,6 +358,20 @@ export default function InventoryPage() {
                     onChange={e => setNewBarcode(e.target.value)}
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Category & Subcategory</label>
+                <select 
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-slate-900 bg-white"
+                  value={newSubcategory}
+                  onChange={e => setNewSubcategory(e.target.value)}
+                >
+                  <option value="">General / Uncategorized</option>
+                  {subcategories.map(s => (
+                    <option key={s.id} value={s.id}>{s.name} ({s.category_name})</option>
+                  ))}
+                </select>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

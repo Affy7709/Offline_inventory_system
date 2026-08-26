@@ -216,7 +216,7 @@ switch ($action) {
                 'dept_name'   => $user['dept_name'],
             ];
 
-            audit($pdo, $user['id'], $username, 'Login successful', 'session', null, '', "IP:$ip | FP:$deviceFp");
+            audit($pdo, $user['id'], $username, 'Login successful', 'Session', null, '', '');
             echo json_encode(['success' => true, 'user' => $publicUser, 'token' => $token]);
         } else {
             // Wrong credentials
@@ -227,9 +227,9 @@ switch ($action) {
                     : null;
                 $pdo->prepare("UPDATE users SET failed_attempts=?, locked_until=? WHERE id=?")
                     ->execute([$fails, $lock, $user['id']]);
-                audit($pdo, $user['id'], $username, 'Login failed', 'session', null, '', "Attempt $fails | IP:$ip");
+                audit($pdo, $user['id'], $username, 'Login failed', 'Session', null, '', "Attempt $fails");
             } else {
-                audit($pdo, null, $username, 'Login failed — unknown user', 'session', null, '', "IP:$ip");
+                audit($pdo, null, $username, 'Login failed — unknown user', 'Session', null, '', '');
             }
             http_response_code(401);
             echo json_encode(['error' => 'Invalid username or password']);
@@ -340,8 +340,28 @@ switch ($action) {
             ")->execute([$subId, $body['name'], $body['sku'], $barcode, $min, $stock]);
             $id = (int)$pdo->lastInsertId();
 
-            audit($pdo, $user['id'], $user['username'], 'Added product', 'product', $id,
-                '', "name={$body['name']} sku={$body['sku']} stock=$stock");
+            audit($pdo, $user['id'], $user['username'], 'Added Product', "{$body['name']} ({$body['sku']})", $id,
+                'Stock: 0', "Stock: {$stock}");
+            echo json_encode(['success' => true]);
+        } elseif ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
+            if ($user['role_name'] !== 'Admin') {
+                http_response_code(403);
+                echo json_encode(['error' => 'Permission denied. Admins only.']);
+                break;
+            }
+            $productId = (int)($_GET['id'] ?? 0);
+            if (!$productId) {
+                http_response_code(400); echo json_encode(['error' => 'Product ID required']); break;
+            }
+            $stmt = $pdo->prepare("SELECT name, sku, current_stock FROM products WHERE id = ?");
+            $stmt->execute([$productId]);
+            $prod = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$prod) {
+                http_response_code(404); echo json_encode(['error' => 'Product not found']); break;
+            }
+            $pdo->prepare("DELETE FROM products WHERE id = ?")->execute([$productId]);
+            audit($pdo, $user['id'], $user['username'], 'Deleted Product', "{$prod['name']} ({$prod['sku']})", $productId,
+                "Stock: {$prod['current_stock']}", 'Product deleted from inventory');
             echo json_encode(['success' => true]);
         }
         break;
@@ -409,10 +429,10 @@ switch ($action) {
 
             audit(
                 $pdo, $user['id'], $user['username'],
-                ucfirst($type) . ' transaction',
-                'product', $productId,
-                "stock=$oldStock",
-                "stock=$newStock qty=$qty notes=$notes"
+                ucfirst($type) . ' Transaction',
+                "{$product['name']} ({$product['sku']})", $productId,
+                "Stock: {$oldStock}",
+                "Stock: {$newStock} (" . ($type === 'issue' || $type === 'remove' ? "-{$qty}" : "+{$qty}") . ")" . ($notes ? " | {$notes}" : "")
             );
 
             $pdo->commit();
