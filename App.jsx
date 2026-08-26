@@ -7,6 +7,16 @@ import Products from './pages/Products';
 import Categories from './pages/Categories';
 import Scanner from './pages/Scanner';
 import Reports from './pages/Reports';
+
+// New pages wired to backend
+import InventoryPage    from './pages/InventoryPage';
+import StockPage        from './pages/StockPage';
+import TransactionsPage from './pages/TransactionsPage';
+import AllocationsPage  from './pages/AllocationsPage';
+import QrPage           from './pages/QrPage';
+import AuditPage        from './pages/AuditPage';
+import RolesPage        from './pages/RolesPage';
+
 import './App.css';
 
 import { getAuthToken } from './api';
@@ -23,12 +33,24 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-        <Route path="/products" element={<PrivateRoute><Products /></PrivateRoute>} />
+
+        {/* Existing pages */}
+        <Route path="/"           element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+        <Route path="/products"   element={<PrivateRoute><Products /></PrivateRoute>} />
         <Route path="/categories" element={<PrivateRoute><Categories /></PrivateRoute>} />
-        <Route path="/scanner" element={<PrivateRoute><Scanner /></PrivateRoute>} />
-        <Route path="/reports" element={<PrivateRoute><Reports /></PrivateRoute>} />
+        <Route path="/scanner"    element={<PrivateRoute><Scanner /></PrivateRoute>} />
+        <Route path="/reports"    element={<PrivateRoute><Reports /></PrivateRoute>} />
+
+        {/* New pages */}
+        <Route path="/inventory"    element={<PrivateRoute><InventoryPage /></PrivateRoute>} />
+        <Route path="/stock"        element={<PrivateRoute><StockPage /></PrivateRoute>} />
+        <Route path="/transactions" element={<PrivateRoute><TransactionsPage /></PrivateRoute>} />
+        <Route path="/allocations"  element={<PrivateRoute><AllocationsPage /></PrivateRoute>} />
+        <Route path="/qr"           element={<PrivateRoute><QrPage /></PrivateRoute>} />
+        <Route path="/audit"        element={<PrivateRoute><AuditPage /></PrivateRoute>} />
+        <Route path="/roles"        element={<PrivateRoute><RolesPage /></PrivateRoute>} />
       </Routes>
     </BrowserRouter>
   );
 }
+

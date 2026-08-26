@@ -23,11 +23,22 @@ export default function Layout({ children }) {
   };
 
   const navItems = [
-    { name: 'Dashboard', path: '/', icon: 'space_dashboard' },
-    { name: 'Products', path: '/products', icon: 'inventory_2' },
-    { name: 'Categories', path: '/categories', icon: 'category' },
-    { name: 'Scanner', path: '/scanner', icon: 'barcode_scanner' },
-    { name: 'Reports', path: '/reports', icon: 'assessment' },
+    // ── Core ──────────────────────────────────────────────────
+    { name: 'Dashboard',    path: '/',            icon: 'space_dashboard' },
+    { name: 'Inventory',    path: '/inventory',   icon: 'inventory_2' },
+    { name: 'Products',     path: '/products',    icon: 'category' },
+    { name: 'Categories',   path: '/categories',  icon: 'folder_open' },
+    // ── Stock & Transactions ──────────────────────────────────
+    { name: 'Stock',        path: '/stock',       icon: 'warehouse', divider: true },
+    { name: 'Transactions', path: '/transactions',icon: 'swap_horiz' },
+    { name: 'Allocations',  path: '/allocations', icon: 'group' },
+    // ── Field Ops & Reporting ─────────────────────────────────
+    { name: 'QR / Barcode', path: '/qr',          icon: 'barcode_scanner', divider: true },
+    { name: 'Scanner',      path: '/scanner',     icon: 'photo_camera' },
+    { name: 'Reports',      path: '/reports',     icon: 'assessment' },
+    // ── Admin ─────────────────────────────────────────────────
+    { name: 'Audit Logs',   path: '/audit',       icon: 'manage_search', divider: true },
+    { name: 'Roles',        path: '/roles',       icon: 'shield' },
   ];
 
   const isActive = (path) => location.pathname === path;
@@ -65,21 +76,26 @@ export default function Layout({ children }) {
           <div className="text-[11px] font-semibold text-text-tertiary uppercase tracking-wider px-3 mb-3">Menu</div>
           <div className="space-y-1">
             {navItems.map(item => (
-              <Link
-                key={item.path}
-                to={item.path}
-                onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 group relative ${
-                  isActive(item.path) 
-                    ? 'bg-primary text-white shadow-sm' 
-                    : 'text-text-secondary hover:bg-surface-raised hover:text-text-primary'
-                }`}
-              >
-                <span className={`material-symbols-outlined text-xl ${isActive(item.path) ? 'text-white' : 'text-text-tertiary group-hover:text-primary'}`}
-                  style={isActive(item.path) ? {fontVariationSettings: "'FILL' 1"} : {}}
-                >{item.icon}</span>
-                {item.name}
-              </Link>
+              <div key={item.path}>
+                {item.divider && <div className="my-2 border-t border-border" />}
+                <Link
+                  to={item.path}
+                  onClick={() => setSidebarOpen(false)}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 group relative ${
+                    isActive(item.path)
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'text-text-secondary hover:bg-surface-raised hover:text-text-primary'
+                  }`}
+                >
+                  <span
+                    className={`material-symbols-outlined text-xl ${isActive(item.path) ? 'text-white' : 'text-text-tertiary group-hover:text-primary'}`}
+                    style={isActive(item.path) ? { fontVariationSettings: "'FILL' 1" } : {}}
+                  >
+                    {item.icon}
+                  </span>
+                  {item.name}
+                </Link>
+              </div>
             ))}
           </div>
         </nav>

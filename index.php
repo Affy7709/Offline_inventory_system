@@ -462,6 +462,70 @@ switch ($action) {
         echo json_encode($pdo->query("SELECT * FROM departments ORDER BY name")->fetchAll(PDO::FETCH_ASSOC));
         break;
 
+    // ── Roles with user counts ────────────────────────────────
+    case 'roles':
+        $user = authenticate_user($pdo);
+        $stmt = $pdo->query("
+            SELECT r.id, r.name, COUNT(u.id) AS user_count
+              FROM roles r
+              LEFT JOIN users u ON u.role_id = r.id AND u.is_active = TRUE
+             GROUP BY r.id, r.name
+             ORDER BY r.name
+        ");
+        echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+        break;
+
+    // ── Stock summary: monthly KPIs + threshold table ─────────
+    case 'stock_summary':
+        $user = authenticate_user($pdo);
+        $stockIn = $pdo->query("
+            SELECT COUNT(*) FROM transactions
+             WHERE type IN ('add','return')
+               AND DATE_TRUNC('month', transaction_date) = DATE_TRUNC('month', NOW())
+        ")->fetchColumn();
+        $stockOut = $pdo->query("
+            SELECT COUNT(*) FROM transactions
+             WHERE type IN ('issue','remove')
+               AND DATE_TRUNC('month', transaction_date) = DATE_TRUNC('month', NOW())
+        ")->fetchColumn();
+        $auditCorrections = $pdo->query("
+            SELECT COUNT(*) FROM audit_logs
+             WHERE action ILIKE '%adjust%'
+               AND timestamp >= NOW() - INTERVAL '30 days'
+        ")->fetchColumn();
+        $products = $pdo->query("
+            SELECT p.id, p.name, p.sku, p.current_stock, p.min_stock_level,
+                   s.name AS subcategory_name
+              FROM products p
+              LEFT JOIN subcategories s ON p.subcategory_id = s.id
+             ORDER BY p.current_stock ASC
+        ")->fetchAll(PDO::FETCH_ASSOC);
+        echo json_encode([
+            'stockIn'          => (int)$stockIn,
+            'stockOut'         => (int)$stockOut,
+            'auditCorrections' => (int)$auditCorrections,
+            'products'         => $products,
+        ]);
+        break;
+
+    // ── Allocations: issue/return history with user + dept ────
+    case 'allocations':
+        $user = authenticate_user($pdo);
+        $stmt = $pdo->query("
+            SELECT t.id, t.type, t.quantity, t.transaction_date, t.notes,
+                   p.name AS product_name, p.sku,
+                   u.username, d.name AS dept_name
+              FROM transactions t
+              LEFT JOIN products p  ON t.product_id    = p.id
+              LEFT JOIN users u     ON t.user_id        = u.id
+              LEFT JOIN departments d ON t.department_id = d.id
+             WHERE t.type IN ('issue','return')
+             ORDER BY t.transaction_date DESC
+             LIMIT 200
+        ");
+        echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+        break;
+
     default:
         http_response_code(404);
         echo json_encode(['error' => 'Unknown action']);
