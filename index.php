@@ -1,16 +1,8 @@
 <?php
-// ================================================================
-//  index.php — Invendor API
-//
-//  Security model (Method 3):
-//    1. Client fetches per-user salt from /get_salt?username=X
-//    2. Client computes sha256_hex( salt + plaintext_password )
-//    3. Client sends { username, password_hash: sha256_hex }
-//    4. Server calls password_verify(sha256_hex, bcrypt_stored)
-//    5. Server issues a 64-byte cryptographically random token
-//    6. UNIQUE(user_id) in user_tokens enforces single-device login
-//    7. Every mutating action writes to audit_logs with device info
-// ================================================================
+// Disable HTML error output to prevent corrupting API JSON responses
+ini_set('display_errors', '0');
+error_reporting(E_ALL & ~E_NOTICE & ~E_DEPRECATED);
+ob_start();
 
 require __DIR__ . '/db.php';
 
@@ -395,7 +387,7 @@ switch ($action) {
         $productId = (int)($body['product_id'] ?? 0);
         $type      = $body['type'] ?? '';
         $qty       = (int)($body['quantity'] ?? 0);
-        $deptId    = !empty($body['department_id']) ? (int)$body['department_id'] : $user['department_id'];
+        $deptId    = !empty($body['department_id']) ? (int)$body['department_id'] : ($user['department_id'] ?? null);
         $notes     = substr(trim($body['notes'] ?? ''), 0, 500);
 
         if (!in_array($type, ['issue','return','add','remove'], true) || $qty < 1 || !$productId) {
@@ -436,9 +428,11 @@ switch ($action) {
             );
 
             $pdo->commit();
+            if (ob_get_length()) ob_clean();
             echo json_encode(['success' => true, 'new_stock' => $newStock]);
         } catch (Exception $e) {
             $pdo->rollBack();
+            if (ob_get_length()) ob_clean();
             http_response_code(400);
             echo json_encode(['error' => $e->getMessage()]);
         }

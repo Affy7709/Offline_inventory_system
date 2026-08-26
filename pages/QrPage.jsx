@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Camera, Search, QrCode, Download, Printer, X, ArrowUpRight, ArrowDownLeft } from 'lucide-react'
 import { Html5QrcodeScanner, Html5QrcodeScanType } from 'html5-qrcode'
-import { getApiBase, apiFetch } from '../api'
+import { getApiBase, apiFetch, safeJson } from '../api'
 
 export default function QrPage() {
   const [sku, setSku] = useState('')
@@ -73,14 +73,15 @@ export default function QrPage() {
 
     try {
       const res = await apiFetch(`${base}/index.php?action=product_by_barcode&barcode=${encodeURIComponent(searchCode.trim())}`)
-      const data = await res.json()
+      const data = await safeJson(res)
       if (res.ok && data) {
         setProduct(data)
       } else {
         setError(data.error || 'Product not found for this SKU / Barcode')
       }
-    } catch {
-      setError('Connection error')
+    } catch (err) {
+      console.error(err)
+      setError('Connection error — check backend server IP')
     } finally {
       setLoading(false)
     }
@@ -88,7 +89,10 @@ export default function QrPage() {
 
   const handleIssueSubmit = async (e) => {
     e.preventDefault()
-    if (!product) return
+    if (!product || !product.id) {
+      setTxError('No valid product selected')
+      return
+    }
     if (!issuedTo.trim()) {
       setTxError('Issued To is a mandatory field')
       return
@@ -99,28 +103,31 @@ export default function QrPage() {
 
     const compiledNotes = `Issued To: ${issuedTo.trim()}${purpose.trim() ? ` | Purpose: ${purpose.trim()}` : ''}`
 
+    const validQty = Math.max(1, parseInt(txQty, 10) || 1)
+
     try {
       const res = await apiFetch(`${base}/index.php?action=transaction`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          product_id: product.id,
+          product_id: Number(product.id),
           type: 'issue',
-          quantity: txQty,
+          quantity: validQty,
           notes: compiledNotes
         })
       })
-      const data = await res.json()
+      const data = await safeJson(res)
       if (res.ok && data.success) {
-        setTxSuccess(`Successfully issued ${txQty} unit(s) to ${issuedTo.trim()}!`)
+        setTxSuccess(`Successfully issued ${validQty} unit(s) to ${issuedTo.trim()}!`)
         setProduct(prev => ({ ...prev, current_stock: data.new_stock }))
         setIssuedTo('')
         setPurpose('')
       } else {
         setTxError(data.error || 'Transaction failed')
       }
-    } catch {
-      setTxError('Failed to execute transaction')
+    } catch (err) {
+      console.error('Issue transaction error:', err)
+      setTxError(err?.message || 'Network error: Cannot connect to server')
     } finally {
       setTxLoading(false)
     }
@@ -128,34 +135,40 @@ export default function QrPage() {
 
   const handleReturnSubmit = async (e) => {
     e.preventDefault()
-    if (!product) return
+    if (!product || !product.id) {
+      setTxError('No valid product selected')
+      return
+    }
     setTxLoading(true)
     setTxSuccess('')
     setTxError('')
 
     const compiledNotes = `Condition: ${condition}${returnNotes.trim() ? ` | Notes: ${returnNotes.trim()}` : ''}`
 
+    const validQty = Math.max(1, parseInt(txQty, 10) || 1)
+
     try {
       const res = await apiFetch(`${base}/index.php?action=transaction`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          product_id: product.id,
+          product_id: Number(product.id),
           type: 'return',
-          quantity: txQty,
+          quantity: validQty,
           notes: compiledNotes
         })
       })
-      const data = await res.json()
+      const data = await safeJson(res)
       if (res.ok && data.success) {
-        setTxSuccess(`Successfully returned ${txQty} unit(s)!`)
+        setTxSuccess(`Successfully returned ${validQty} unit(s)!`)
         setProduct(prev => ({ ...prev, current_stock: data.new_stock }))
         setReturnNotes('')
       } else {
         setTxError(data.error || 'Transaction failed')
       }
-    } catch {
-      setTxError('Failed to execute transaction')
+    } catch (err) {
+      console.error('Return transaction error:', err)
+      setTxError(err?.message || 'Network error: Cannot connect to server')
     } finally {
       setTxLoading(false)
     }
@@ -311,7 +324,7 @@ export default function QrPage() {
                         type="number" 
                         min="1" 
                         value={txQty}
-                        onChange={e => setTxQty(Math.max(1, parseInt(e.target.value) || 1))}
+                        onChange={e => setTxQty(e.target.value)}
                         className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-900 outline-none focus:border-slate-900 bg-white"
                       />
                     </div>
@@ -341,11 +354,11 @@ export default function QrPage() {
 
                   <button
                     type="submit"
-                    disabled={txLoading || Number(product.current_stock) < txQty}
+                    disabled={txLoading || Number(product.current_stock) < (parseInt(txQty, 10) || 1)}
                     className="w-full rounded-xl bg-amber-600 py-2.5 text-xs font-semibold text-white hover:bg-amber-700 transition disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
                   >
                     <ArrowUpRight size={14} />
-                    Confirm Issue ({txQty} {txQty === 1 ? 'unit' : 'units'})
+                    Confirm Issue ({(parseInt(txQty, 10) || 1)} {(parseInt(txQty, 10) || 1) === 1 ? 'unit' : 'units'})
                   </button>
                 </form>
               ) : (
@@ -357,7 +370,7 @@ export default function QrPage() {
                         type="number" 
                         min="1" 
                         value={txQty}
-                        onChange={e => setTxQty(Math.max(1, parseInt(e.target.value) || 1))}
+                        onChange={e => setTxQty(e.target.value)}
                         className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-900 outline-none focus:border-slate-900 bg-white"
                       />
                     </div>
@@ -393,7 +406,7 @@ export default function QrPage() {
                     className="w-full rounded-xl bg-emerald-600 py-2.5 text-xs font-semibold text-white hover:bg-emerald-700 transition disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
                   >
                     <ArrowDownLeft size={14} />
-                    Confirm Return ({txQty} {txQty === 1 ? 'unit' : 'units'})
+                    Confirm Return ({(parseInt(txQty, 10) || 1)} {(parseInt(txQty, 10) || 1) === 1 ? 'unit' : 'units'})
                   </button>
                 </form>
               )}

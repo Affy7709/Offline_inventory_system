@@ -83,6 +83,22 @@ export const apiFetch = async (url, options = {}) => {
   return res;
 };
 
+// ── Helper: Safe JSON parser that strips stray HTML/PHP notices ──
+export const safeJson = async (res) => {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const jsonMatch = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+    if (jsonMatch) {
+      try {
+        return JSON.parse(jsonMatch[0]);
+      } catch {}
+    }
+    throw new Error('Invalid JSON response from server');
+  }
+};
+
 // ── Application config & navigation ─────────────────────────
 export const company = {
   name: "Northstar AssetOps",
