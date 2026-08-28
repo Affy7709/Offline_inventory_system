@@ -1,7 +1,7 @@
 import "./App.css";
 import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
-import socket from "./socket";
+import socket, { BACKEND_URL } from "./socket";
 
 function App() {
   const [barcode, setBarcode] = useState("");
@@ -12,7 +12,7 @@ function App() {
 
   const scannerRef = useRef(null);
 
-  const API_URL = "http://10.71.27.158:5000";
+  const API_URL = BACKEND_URL;
 
   const OFFLINE_QUEUE_KEY = "inventory_offline_queue";
   const PRODUCTS_CACHE_KEY = "inventory_products_cache";

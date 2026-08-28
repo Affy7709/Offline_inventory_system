@@ -1,7 +1,11 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
+const { defineConfig } = require('vite')
+const react = require('@vitejs/plugin-react')
 
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
+module.exports = defineConfig({
+  plugins: [react()],
+  server: {
+    host: true, // Exposes on local network for mobile phones (0.0.0.0)
+    port: 5173,
+    open: true,
+  },
 })
