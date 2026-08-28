@@ -42,6 +42,8 @@ foreach ($users as $u) {
     $stmt->execute([$u['username']]);
     $existing = $stmt->fetch(PDO::FETCH_ASSOC);
 
+    $salt = bin2hex(random_bytes(16));
+
     if ($existing) {
         $pdo->prepare("
             UPDATE users
@@ -51,9 +53,9 @@ foreach ($users as $u) {
         echo "Updated : {$u['username']}\n";
     } else {
         $pdo->prepare("
-            INSERT INTO users (username, password_hash, role_id, department_id)
-            VALUES (?, ?, ?, ?)
-        ")->execute([$u['username'], $bcryptHash, $u['role_id'], $u['department_id']]);
+            INSERT INTO users (username, password_hash, salt, role_id, department_id)
+            VALUES (?, ?, ?, ?, ?)
+        ")->execute([$u['username'], $bcryptHash, $salt, $u['role_id'], $u['department_id']]);
         echo "Created : {$u['username']}\n";
     }
 

@@ -1,14 +1,19 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
 import Layout from './components/Layout';
 import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Products from './pages/Products';
-import Categories from './pages/Categories';
-import Scanner from './pages/Scanner';
-import Reports from './pages/Reports';
-import './App.css';
 
+// Pages from inventory
+import DashboardPage    from './pages/DashboardPage';
+import InventoryPage    from './pages/InventoryPage';
+import StockPage        from './pages/StockPage';
+import TransactionsPage from './pages/TransactionsPage';
+import AllocationsPage  from './pages/AllocationsPage';
+import QrPage           from './pages/QrPage';
+import ReportsPage      from './pages/ReportsPage';
+import AuditPage        from './pages/AuditPage';
+import Categories       from './pages/Categories';
+
+import './App.css';
 import { getAuthToken } from './api';
 
 function PrivateRoute({ children }) {
@@ -23,11 +28,20 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-        <Route path="/products" element={<PrivateRoute><Products /></PrivateRoute>} />
-        <Route path="/categories" element={<PrivateRoute><Categories /></PrivateRoute>} />
-        <Route path="/scanner" element={<PrivateRoute><Scanner /></PrivateRoute>} />
-        <Route path="/reports" element={<PrivateRoute><Reports /></PrivateRoute>} />
+
+        {/* All 10 Pages from Inventory */}
+        <Route path="/"             element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
+        <Route path="/inventory"    element={<PrivateRoute><InventoryPage /></PrivateRoute>} />
+        <Route path="/categories"   element={<PrivateRoute><Categories /></PrivateRoute>} />
+        <Route path="/qr"           element={<PrivateRoute><QrPage /></PrivateRoute>} />
+        <Route path="/transactions" element={<PrivateRoute><TransactionsPage /></PrivateRoute>} />
+        <Route path="/stock"        element={<PrivateRoute><StockPage /></PrivateRoute>} />
+        <Route path="/allocations"  element={<PrivateRoute><AllocationsPage /></PrivateRoute>} />
+        <Route path="/reports"      element={<PrivateRoute><ReportsPage /></PrivateRoute>} />
+        <Route path="/audit"        element={<PrivateRoute><AuditPage /></PrivateRoute>} />
+
+        {/* Catch-all redirect to Dashboard */}
+        <Route path="*"             element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

@@ -1,16 +1,8 @@
 <?php
-// ================================================================
-//  index.php — Invendor API
-//
-//  Security model (Method 3):
-//    1. Client fetches per-user salt from /get_salt?username=X
-//    2. Client computes sha256_hex( salt + plaintext_password )
-//    3. Client sends { username, password_hash: sha256_hex }
-//    4. Server calls password_verify(sha256_hex, bcrypt_stored)
-//    5. Server issues a 64-byte cryptographically random token
-//    6. UNIQUE(user_id) in user_tokens enforces single-device login
-//    7. Every mutating action writes to audit_logs with device info
-// ================================================================
+// Disable HTML error output to prevent corrupting API JSON responses
+ini_set('display_errors', '0');
+error_reporting(E_ALL & ~E_NOTICE & ~E_DEPRECATED);
+ob_start();
 
 require __DIR__ . '/db.php';
 
@@ -216,7 +208,7 @@ switch ($action) {
                 'dept_name'   => $user['dept_name'],
             ];
 
-            audit($pdo, $user['id'], $username, 'Login successful', 'session', null, '', "IP:$ip | FP:$deviceFp");
+            audit($pdo, $user['id'], $username, 'Login successful', 'Session', null, '', '');
             echo json_encode(['success' => true, 'user' => $publicUser, 'token' => $token]);
         } else {
             // Wrong credentials
@@ -227,9 +219,9 @@ switch ($action) {
                     : null;
                 $pdo->prepare("UPDATE users SET failed_attempts=?, locked_until=? WHERE id=?")
                     ->execute([$fails, $lock, $user['id']]);
-                audit($pdo, $user['id'], $username, 'Login failed', 'session', null, '', "Attempt $fails | IP:$ip");
+                audit($pdo, $user['id'], $username, 'Login failed', 'Session', null, '', "Attempt $fails");
             } else {
-                audit($pdo, null, $username, 'Login failed — unknown user', 'session', null, '', "IP:$ip");
+                audit($pdo, null, $username, 'Login failed — unknown user', 'Session', null, '', '');
             }
             http_response_code(401);
             echo json_encode(['error' => 'Invalid username or password']);
@@ -340,8 +332,28 @@ switch ($action) {
             ")->execute([$subId, $body['name'], $body['sku'], $barcode, $min, $stock]);
             $id = (int)$pdo->lastInsertId();
 
-            audit($pdo, $user['id'], $user['username'], 'Added product', 'product', $id,
-                '', "name={$body['name']} sku={$body['sku']} stock=$stock");
+            audit($pdo, $user['id'], $user['username'], 'Added Product', "{$body['name']} ({$body['sku']})", $id,
+                'Stock: 0', "Stock: {$stock}");
+            echo json_encode(['success' => true]);
+        } elseif ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
+            if ($user['role_name'] !== 'Admin') {
+                http_response_code(403);
+                echo json_encode(['error' => 'Permission denied. Admins only.']);
+                break;
+            }
+            $productId = (int)($_GET['id'] ?? 0);
+            if (!$productId) {
+                http_response_code(400); echo json_encode(['error' => 'Product ID required']); break;
+            }
+            $stmt = $pdo->prepare("SELECT name, sku, current_stock FROM products WHERE id = ?");
+            $stmt->execute([$productId]);
+            $prod = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$prod) {
+                http_response_code(404); echo json_encode(['error' => 'Product not found']); break;
+            }
+            $pdo->prepare("DELETE FROM products WHERE id = ?")->execute([$productId]);
+            audit($pdo, $user['id'], $user['username'], 'Deleted Product', "{$prod['name']} ({$prod['sku']})", $productId,
+                "Stock: {$prod['current_stock']}", 'Product deleted from inventory');
             echo json_encode(['success' => true]);
         }
         break;
@@ -375,7 +387,7 @@ switch ($action) {
         $productId = (int)($body['product_id'] ?? 0);
         $type      = $body['type'] ?? '';
         $qty       = (int)($body['quantity'] ?? 0);
-        $deptId    = !empty($body['department_id']) ? (int)$body['department_id'] : $user['department_id'];
+        $deptId    = !empty($body['department_id']) ? (int)$body['department_id'] : ($user['department_id'] ?? null);
         $notes     = substr(trim($body['notes'] ?? ''), 0, 500);
 
         if (!in_array($type, ['issue','return','add','remove'], true) || $qty < 1 || !$productId) {
@@ -409,16 +421,18 @@ switch ($action) {
 
             audit(
                 $pdo, $user['id'], $user['username'],
-                ucfirst($type) . ' transaction',
-                'product', $productId,
-                "stock=$oldStock",
-                "stock=$newStock qty=$qty notes=$notes"
+                ucfirst($type) . ' Transaction',
+                "{$product['name']} ({$product['sku']})", $productId,
+                "Stock: {$oldStock}",
+                "Stock: {$newStock} (" . ($type === 'issue' || $type === 'remove' ? "-{$qty}" : "+{$qty}") . ")" . ($notes ? " | {$notes}" : "")
             );
 
             $pdo->commit();
+            if (ob_get_length()) ob_clean();
             echo json_encode(['success' => true, 'new_stock' => $newStock]);
         } catch (Exception $e) {
             $pdo->rollBack();
+            if (ob_get_length()) ob_clean();
             http_response_code(400);
             echo json_encode(['error' => $e->getMessage()]);
         }
@@ -460,6 +474,70 @@ switch ($action) {
     case 'departments':
         authenticate_user($pdo);
         echo json_encode($pdo->query("SELECT * FROM departments ORDER BY name")->fetchAll(PDO::FETCH_ASSOC));
+        break;
+
+    // ── Roles with user counts ────────────────────────────────
+    case 'roles':
+        $user = authenticate_user($pdo);
+        $stmt = $pdo->query("
+            SELECT r.id, r.name, COUNT(u.id) AS user_count
+              FROM roles r
+              LEFT JOIN users u ON u.role_id = r.id AND u.is_active = TRUE
+             GROUP BY r.id, r.name
+             ORDER BY r.name
+        ");
+        echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+        break;
+
+    // ── Stock summary: monthly KPIs + threshold table ─────────
+    case 'stock_summary':
+        $user = authenticate_user($pdo);
+        $stockIn = $pdo->query("
+            SELECT COUNT(*) FROM transactions
+             WHERE type IN ('add','return')
+               AND DATE_TRUNC('month', transaction_date) = DATE_TRUNC('month', NOW())
+        ")->fetchColumn();
+        $stockOut = $pdo->query("
+            SELECT COUNT(*) FROM transactions
+             WHERE type IN ('issue','remove')
+               AND DATE_TRUNC('month', transaction_date) = DATE_TRUNC('month', NOW())
+        ")->fetchColumn();
+        $auditCorrections = $pdo->query("
+            SELECT COUNT(*) FROM audit_logs
+             WHERE action ILIKE '%adjust%'
+               AND timestamp >= NOW() - INTERVAL '30 days'
+        ")->fetchColumn();
+        $products = $pdo->query("
+            SELECT p.id, p.name, p.sku, p.current_stock, p.min_stock_level,
+                   s.name AS subcategory_name
+              FROM products p
+              LEFT JOIN subcategories s ON p.subcategory_id = s.id
+             ORDER BY p.current_stock ASC
+        ")->fetchAll(PDO::FETCH_ASSOC);
+        echo json_encode([
+            'stockIn'          => (int)$stockIn,
+            'stockOut'         => (int)$stockOut,
+            'auditCorrections' => (int)$auditCorrections,
+            'products'         => $products,
+        ]);
+        break;
+
+    // ── Allocations: issue/return history with user + dept ────
+    case 'allocations':
+        $user = authenticate_user($pdo);
+        $stmt = $pdo->query("
+            SELECT t.id, t.type, t.quantity, t.transaction_date, t.notes,
+                   p.name AS product_name, p.sku,
+                   u.username, d.name AS dept_name
+              FROM transactions t
+              LEFT JOIN products p  ON t.product_id    = p.id
+              LEFT JOIN users u     ON t.user_id        = u.id
+              LEFT JOIN departments d ON t.department_id = d.id
+             WHERE t.type IN ('issue','return')
+             ORDER BY t.transaction_date DESC
+             LIMIT 200
+        ");
+        echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
         break;
 
     default:
