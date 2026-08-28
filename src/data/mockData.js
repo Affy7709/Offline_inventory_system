@@ -6,6 +6,7 @@ export const company = {
 export const navigation = [
   { name: "Dashboard", icon: "LayoutDashboard", path: "/" },
   { name: "Inventory", icon: "Package2", path: "/inventory" },
+  { name: "Categories", icon: "Tags", path: "/categories" },
   { name: "QR / Barcode", icon: "ScanLine", path: "/qr" },
   { name: "Issues & Returns", icon: "ArrowLeftRight", path: "/transactions" },
   { name: "Stock", icon: "Boxes", path: "/stock" },

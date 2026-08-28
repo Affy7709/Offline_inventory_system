@@ -39,6 +39,11 @@ app.get("/", (req, res) => {
     res.send("Inventory Backend is running!");
 });
 
+// Logout endpoint
+app.post("/logout", (req, res) => {
+    res.json({ success: true, message: "Logged out successfully" });
+});
+
 // Get all products
 app.get("/products", async (req, res) => {
     try {

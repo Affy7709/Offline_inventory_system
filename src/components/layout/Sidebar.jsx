@@ -1,7 +1,8 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   Package2,
+  Tags,
   ScanLine,
   ArrowLeftRight,
   Boxes,
@@ -9,15 +10,18 @@ import {
   FileBarChart2,
   ShieldCheck,
   ClipboardList,
+  LogOut,
   X,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
 import { company, navigation } from "../../data/mockData";
+import { logoutUser } from "../../api";
 
 const iconMap = {
   LayoutDashboard,
   Package2,
+  Tags,
   ScanLine,
   ArrowLeftRight,
   Boxes,
@@ -33,6 +37,12 @@ export default function Sidebar({
   mobileOpen,
   setMobileOpen,
 }) {
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await logoutUser();
+    navigate("/login");
+  };
   return (
     <>
       {/* Mobile Backdrop Overlay */}
@@ -114,6 +124,18 @@ export default function Sidebar({
             );
           })}
         </nav>
+
+        {/* Sign Out Button */}
+        <div className="border-t border-slate-800 p-3">
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-3 w-full rounded-xl px-3 py-3 text-sm font-medium text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition active:scale-98"
+            title="Sign Out"
+          >
+            <LogOut size={20} />
+            {(!collapsed || mobileOpen) && <span>Sign Out</span>}
+          </button>
+        </div>
       </aside>
     </>
   );

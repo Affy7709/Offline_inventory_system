@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Bell, Search, SlidersHorizontal, Plus, Menu, X, CheckCircle2, ShieldCheck, UserCheck } from 'lucide-react'
+import { Bell, Search, SlidersHorizontal, Plus, Menu, X, CheckCircle2, ShieldCheck, UserCheck, LogOut } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useInventory } from '../../context/InventoryContext'
+import { logoutUser } from '../../api'
 
 export default function Topbar({ onMenuClick, onNewAssetClick }) {
   const { currentUser, updateCurrentUser } = useInventory()
@@ -162,20 +163,34 @@ export default function Topbar({ onMenuClick, onNewAssetClick }) {
                 <div className="rounded-lg bg-slate-50 p-2 text-[11px] text-slate-500">
                   All asset issues and returns will automatically record <strong>Issued By: {adminIdInput}</strong>.
                 </div>
-                <div className="flex justify-end gap-2 pt-1">
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                   <button
                     type="button"
-                    onClick={() => setShowUserModal(false)}
-                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-slate-600 hover:bg-slate-50"
+                    onClick={async () => {
+                      setShowUserModal(false);
+                      await logoutUser();
+                      navigate('/login');
+                    }}
+                    className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 transition"
                   >
-                    Cancel
+                    <LogOut size={14} />
+                    <span>Sign Out</span>
                   </button>
-                  <button
-                    type="submit"
-                    className="rounded-lg bg-slate-900 px-3 py-1.5 font-bold text-white hover:bg-slate-800"
-                  >
-                    Set Active ID
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowUserModal(false)}
+                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-slate-600 hover:bg-slate-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="rounded-lg bg-slate-900 px-3 py-1.5 font-bold text-white hover:bg-slate-800"
+                    >
+                      Set Active ID
+                    </button>
+                  </div>
                 </div>
               </form>
             </div>
