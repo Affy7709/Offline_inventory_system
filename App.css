@@ -342,3 +342,76 @@ body {
 .material-symbols-outlined {
   font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24;
 }
+
+/* ── Scanner Viewfinder & Laser Animations ── */
+@keyframes scanLaser {
+  0% {
+    top: 6%;
+    opacity: 0.7;
+  }
+  50% {
+    top: 92%;
+    opacity: 1;
+  }
+  100% {
+    top: 6%;
+    opacity: 0.7;
+  }
+}
+
+.animate-scan-laser {
+  animation: scanLaser 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Html5Qrcode styling polish */
+#barcode-viewfinder, #reader {
+  border: none !important;
+  position: relative;
+  background-color: transparent !important;
+}
+
+#barcode-viewfinder video, #reader video {
+  border-radius: 1rem;
+  width: 100% !important;
+  object-fit: cover;
+}
+
+#barcode-viewfinder img[alt="Info icon"],
+#reader img[alt="Info icon"] {
+  display: none !important;
+}
+
+#barcode-viewfinder button,
+#reader button {
+  background-color: #0f172a !important;
+  color: #ffffff !important;
+  border-radius: 0.75rem !important;
+  padding: 0.5rem 1rem !important;
+  font-size: 0.8125rem !important;
+  font-weight: 600 !important;
+  border: none !important;
+  cursor: pointer !important;
+  margin: 0.35rem !important;
+  transition: opacity 0.15s ease;
+}
+
+#barcode-viewfinder button:hover,
+#reader button:hover {
+  opacity: 0.9;
+}
+
+#barcode-viewfinder select,
+#reader select {
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 0.5rem !important;
+  padding: 0.375rem 0.75rem !important;
+  font-size: 0.8125rem !important;
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  margin: 0.25rem 0 !important;
+}
+
+#barcode-viewfinder__dashboard_section,
+#reader__dashboard_section {
+  padding: 0.5rem 0 !important;
+}

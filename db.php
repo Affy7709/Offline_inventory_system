@@ -25,6 +25,7 @@ try {
 
     // users: salt + security columns
     $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS salt VARCHAR(64) NOT NULL DEFAULT ''");
+    $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS barcode VARCHAR(64)");
     $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE");
     $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_attempts INTEGER DEFAULT 0");
     $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP");
@@ -87,6 +88,20 @@ try {
     $pdo->exec("ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS new_value TEXT");
     $pdo->exec("ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS ip_address VARCHAR(45)");
     $pdo->exec("ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS device_fingerprint VARCHAR(64)");
+
+    // ── Auto-migrate: rich template fields on products table ──
+    $pdo->exec("ALTER TABLE products ADD COLUMN IF NOT EXISTS uom VARCHAR(50)");
+    $pdo->exec("ALTER TABLE products ADD COLUMN IF NOT EXISTS auth_qty INTEGER DEFAULT 0");
+    $pdo->exec("ALTER TABLE products ADD COLUMN IF NOT EXISTS system_qty INTEGER DEFAULT 0");
+    $pdo->exec("ALTER TABLE products ADD COLUMN IF NOT EXISTS serviceable_qty INTEGER DEFAULT 0");
+    $pdo->exec("ALTER TABLE products ADD COLUMN IF NOT EXISTS unserviceable_qty INTEGER DEFAULT 0");
+    $pdo->exec("ALTER TABLE products ADD COLUMN IF NOT EXISTS condition VARCHAR(100) DEFAULT 'Good condition'");
+    $pdo->exec("ALTER TABLE products ADD COLUMN IF NOT EXISTS repairable VARCHAR(50) DEFAULT 'Yes'");
+    $pdo->exec("ALTER TABLE products ADD COLUMN IF NOT EXISTS issued_to VARCHAR(100) DEFAULT 'Unassigned'");
+    $pdo->exec("ALTER TABLE products ADD COLUMN IF NOT EXISTS issued_by VARCHAR(100) DEFAULT 'ADM-101'");
+    $pdo->exec("ALTER TABLE products ADD COLUMN IF NOT EXISTS location VARCHAR(150)");
+    $pdo->exec("ALTER TABLE products ADD COLUMN IF NOT EXISTS remarks TEXT");
+    $pdo->exec("UPDATE products SET location = 'Warehouse Main' WHERE location IS NULL OR location = ''");
 
     // ── Auto-migrate: rename qr_code to barcode in products table ──
     $pdo->exec("

@@ -35,7 +35,7 @@ export default function App() {
         <Route path="/categories"   element={<PrivateRoute><Categories /></PrivateRoute>} />
         <Route path="/qr"           element={<PrivateRoute><QrPage /></PrivateRoute>} />
         <Route path="/transactions" element={<PrivateRoute><TransactionsPage /></PrivateRoute>} />
-        <Route path="/stock"        element={<PrivateRoute><StockPage /></PrivateRoute>} />
+        <Route path="/stock"        element={<PrivateRoute><InventoryPage /></PrivateRoute>} />
         <Route path="/allocations"  element={<PrivateRoute><AllocationsPage /></PrivateRoute>} />
         <Route path="/reports"      element={<PrivateRoute><ReportsPage /></PrivateRoute>} />
         <Route path="/audit"        element={<PrivateRoute><AuditPage /></PrivateRoute>} />

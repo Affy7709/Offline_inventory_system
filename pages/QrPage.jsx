@@ -1,15 +1,18 @@
 import { useState, useEffect, useRef } from 'react'
-import { Camera, Search, QrCode, Download, Printer, X, ArrowUpRight, ArrowDownLeft } from 'lucide-react'
+import { Camera, Search, ScanLine, X, ArrowUpRight, ArrowDownLeft, UserCheck, ShieldCheck, LogIn } from 'lucide-react'
 import { Html5QrcodeScanner, Html5QrcodeScanType } from 'html5-qrcode'
-import { getApiBase, apiFetch, safeJson } from '../api'
+import { getApiBase, apiFetch, safeJson, setAuthToken } from '../api'
+import { useNavigate } from 'react-router-dom'
 
 export default function QrPage() {
   const [sku, setSku] = useState('')
   const [product, setProduct] = useState(null)
+  const [scannedUser, setScannedUser] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showCamera, setShowCamera] = useState(false)
   const scannerRef = useRef(null)
+  const navigate = useNavigate()
 
   // Transaction form states
   const [activeTab, setActiveTab] = useState('issue') // 'issue' | 'return'
@@ -33,8 +36,13 @@ export default function QrPage() {
     let scanner = null
     if (showCamera) {
       scanner = new Html5QrcodeScanner(
-        'qr-viewfinder',
-        { fps: 10, qrbox: { width: 250, height: 250 }, supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA] },
+        'barcode-viewfinder',
+        { 
+          fps: 15, 
+          qrbox: { width: 280, height: 170 },
+          supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
+          rememberLastUsedCamera: true
+        },
         false
       )
       scannerRef.current = scanner
@@ -59,9 +67,11 @@ export default function QrPage() {
   }, [showCamera])
 
   const handleLookup = async (searchCode = sku) => {
-    if (!searchCode.trim()) return
+    const code = searchCode.trim()
+    if (!code) return
     setError('')
     setProduct(null)
+    setScannedUser(null)
     setLoading(true)
     setTxSuccess('')
     setTxError('')
@@ -71,13 +81,33 @@ export default function QrPage() {
     setReturnNotes('')
     setCondition('Good Condition')
 
+    // Check if scanned code is a User Barcode (e.g. ADM-101, EMP-101)
+    if (code.toUpperCase().startsWith('ADM-') || code.toUpperCase().startsWith('EMP-') || code.toUpperCase().startsWith('USR-') || code.toLowerCase() === 'admin') {
+      try {
+        const uRes = await apiFetch(`${base}/index.php?action=barcode_login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ barcode: code })
+        })
+        const uData = await safeJson(uRes)
+        if (uRes.ok && uData.success) {
+          setScannedUser(uData)
+          setLoading(false)
+          return
+        }
+      } catch (err) {
+        console.warn('Barcode user lookup check skipped:', err)
+      }
+    }
+
+    // Otherwise lookup product by barcode
     try {
-      const res = await apiFetch(`${base}/index.php?action=product_by_barcode&barcode=${encodeURIComponent(searchCode.trim())}`)
+      const res = await apiFetch(`${base}/index.php?action=product_by_barcode&barcode=${encodeURIComponent(code)}`)
       const data = await safeJson(res)
       if (res.ok && data) {
         setProduct(data)
       } else {
-        setError(data.error || 'Product not found for this SKU / Barcode')
+        setError(data.error || 'No item found matching this Barcode')
       }
     } catch (err) {
       console.error(err)
@@ -85,6 +115,16 @@ export default function QrPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleBarcodeUserLogin = (userPayload) => {
+    if (!userPayload) return
+    localStorage.setItem('user', JSON.stringify(userPayload.user))
+    setAuthToken(userPayload.token)
+    setTxSuccess(`Logged in as ${userPayload.user.username} (${userPayload.user.role_name || 'User'})!`)
+    setTimeout(() => {
+      navigate('/')
+    }, 1000)
   }
 
   const handleIssueSubmit = async (e) => {
@@ -102,7 +142,6 @@ export default function QrPage() {
     setTxError('')
 
     const compiledNotes = `Issued To: ${issuedTo.trim()}${purpose.trim() ? ` | Purpose: ${purpose.trim()}` : ''}`
-
     const validQty = Math.max(1, parseInt(txQty, 10) || 1)
 
     try {
@@ -144,7 +183,6 @@ export default function QrPage() {
     setTxError('')
 
     const compiledNotes = `Condition: ${condition}${returnNotes.trim() ? ` | Notes: ${returnNotes.trim()}` : ''}`
-
     const validQty = Math.max(1, parseInt(txQty, 10) || 1)
 
     try {
@@ -179,19 +217,15 @@ export default function QrPage() {
       <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-soft">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-slate-500">Field Ops</p>
-            <h2 className="text-2xl font-semibold text-slate-900">QR / Barcode scanner</h2>
-          </div>
-          <div className="flex gap-2">
-            <button className="rounded-xl border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"><Download size={18} /></button>
-            <button className="rounded-xl border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"><Printer size={18} /></button>
+            <p className="text-sm text-slate-500">Field Ops & Scanner</p>
+            <h2 className="text-2xl font-semibold text-slate-900">Barcode Verification Terminal</h2>
           </div>
         </div>
 
         {/* Viewfinder area */}
-        <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6">
+        <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 sm:p-6">
           {showCamera ? (
-            <div className="relative">
+            <div className="relative overflow-hidden rounded-2xl bg-slate-950 border border-slate-700 shadow-xl">
               <button 
                 onClick={() => {
                   if (scannerRef.current) {
@@ -200,19 +234,26 @@ export default function QrPage() {
                   }
                   setShowCamera(false)
                 }}
-                className="absolute top-2 right-2 z-10 rounded-lg bg-slate-900/70 p-1.5 text-white hover:bg-slate-900"
+                className="absolute top-3 right-3 z-30 rounded-xl bg-slate-900/80 p-2 text-white hover:bg-slate-900 transition backdrop-blur-sm shadow-md"
+                title="Close Camera"
               >
-                <X size={16} />
+                <X size={18} />
               </button>
-              <div id="qr-viewfinder" className="rounded-2xl overflow-hidden bg-white" />
+
+              <div id="barcode-viewfinder" className="rounded-2xl overflow-hidden min-h-[300px]" />
+
+              {/* Simple Rectangle Guide */}
+              <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center p-4">
+                <div className="w-64 h-40 sm:w-72 sm:h-44 rounded-xl border-2 border-emerald-400 bg-transparent shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
+              </div>
             </div>
           ) : (
             <div className="mx-auto flex h-72 max-w-md flex-col items-center justify-center rounded-2xl border-2 border-slate-300 bg-white shadow-inner gap-3 text-slate-600">
               <Camera size={42} className="text-slate-400" />
-              <span className="text-sm font-medium">Tablet scanner viewfinder</span>
+              <span className="text-sm font-medium">Barcode Scanner Camera Viewfinder</span>
               <button 
                 onClick={() => setShowCamera(true)}
-                className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 transition"
+                className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition shadow-sm"
               >
                 Open Camera Scanner
               </button>
@@ -223,10 +264,10 @@ export default function QrPage() {
         {/* Manual search */}
         <form onSubmit={(e) => { e.preventDefault(); handleLookup(); }} className="mt-5 flex flex-col gap-3 md:flex-row">
           <div className="flex flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500">
-            <QrCode size={16} />
+            <ScanLine size={16} className="text-emerald-600" />
             <input 
               className="w-full bg-transparent outline-none text-slate-900 font-mono text-xs" 
-              placeholder="Scan or type SKU / Barcode manually…" 
+              placeholder="Scan or type Barcode (Product or User ID e.g. ADM-101)…" 
               value={sku}
               onChange={e => setSku(e.target.value)}
             />
@@ -236,7 +277,7 @@ export default function QrPage() {
             disabled={loading}
             className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800 transition disabled:opacity-50"
           >
-            {loading ? 'Searching…' : 'Lookup item'}
+            {loading ? 'Scanning…' : 'Lookup Barcode'}
           </button>
         </form>
 
@@ -251,18 +292,57 @@ export default function QrPage() {
       <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-soft">
         <div className="mb-3 flex items-center gap-2 text-slate-700">
           <Search size={18} />
-          <h3 className="text-lg font-semibold">Lookup result</h3>
+          <h3 className="text-lg font-semibold">Scan Result</h3>
         </div>
 
-        {product ? (
+        {/* 1. SCANNED USER CARD */}
+        {scannedUser ? (
+          <div className="rounded-2xl border-2 border-emerald-500 bg-emerald-50/50 p-5 space-y-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-2xl bg-emerald-600 text-white">
+                  <UserCheck size={24} />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest">User Identified via Barcode</span>
+                  <h4 className="text-xl font-bold text-slate-900">{scannedUser.user.username}</h4>
+                </div>
+              </div>
+              <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-semibold">
+                {scannedUser.user.role_name || 'Staff'}
+              </span>
+            </div>
+
+            <div className="space-y-2 text-xs text-slate-600 border-t border-emerald-200/80 pt-3">
+              <div className="flex justify-between">
+                <span>Department</span>
+                <span className="font-semibold text-slate-800">{scannedUser.user.dept_name || 'Operations'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>User Barcode</span>
+                <span className="font-mono font-bold text-slate-900">{scannedUser.user.barcode || sku}</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleBarcodeUserLogin(scannedUser)}
+              className="w-full mt-2 rounded-xl bg-emerald-600 py-3 text-xs font-bold text-white hover:bg-emerald-700 transition flex items-center justify-center gap-2 shadow-sm"
+            >
+              <LogIn size={16} />
+              <span>Log In as {scannedUser.user.username}</span>
+            </button>
+          </div>
+        ) : product ? (
+          /* 2. SCANNED PRODUCT CARD */
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">SKU / Barcode</p>
-                <h4 className="mt-1 text-xl font-semibold text-slate-900 font-mono">{product.sku}</h4>
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Barcode / SKU</p>
+                <h4 className="mt-1 text-xl font-semibold text-slate-900 font-mono">{product.barcode || product.sku}</h4>
               </div>
               <div className="rounded-xl bg-slate-900 p-3 text-white">
-                <QrCode size={20} />
+                <ScanLine size={20} />
               </div>
             </div>
 
@@ -276,7 +356,7 @@ export default function QrPage() {
                 <span className="font-semibold text-slate-800">{product.subcategory_name || 'General'}</span>
               </div>
               <div className="flex justify-between">
-                <span>Barcode</span>
+                <span>Barcode ID</span>
                 <span className="font-mono text-slate-800">{product.barcode || product.sku}</span>
               </div>
               <div className="flex justify-between">
@@ -425,9 +505,9 @@ export default function QrPage() {
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400 text-center">
-            <QrCode size={48} className="text-slate-300 mb-2" />
-            <p className="text-sm font-medium text-slate-500">No asset scanned yet</p>
-            <p className="text-xs text-slate-400 mt-1">Scan a QR code or enter SKU to view live stock details</p>
+            <ScanLine size={48} className="text-slate-300 mb-2" />
+            <p className="text-sm font-medium text-slate-500">No Barcode scanned yet</p>
+            <p className="text-xs text-slate-400 mt-1">Scan a Product Barcode or User Barcode badge to view details</p>
           </div>
         )}
       </div>

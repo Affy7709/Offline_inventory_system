@@ -90,7 +90,7 @@ export default function DashboardPage() {
   const recentTxs = data?.recentTransactions || []
 
   const quickActions = [
-    { label: 'Scan QR', icon: QrCode, action: () => navigate('/qr') },
+    { label: 'Barcode Scanner', icon: Barcode, action: () => navigate('/qr') },
     { label: 'Add Product', icon: Plus, action: () => navigate('/inventory') },
     { label: 'Stock In', icon: Boxes, action: () => navigate('/stock') },
     { label: 'Stock Out', icon: Warehouse, action: () => navigate('/stock') },

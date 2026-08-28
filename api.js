@@ -26,11 +26,25 @@ export async function getDeviceFingerprint() {
     navigator.platform ?? '',
   ].join('|');
 
-  // SHA-256 via Web Crypto API (built into every modern browser, works offline)
-  const encoded = new TextEncoder().encode(raw);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  _cachedFingerprint = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  if (window.crypto && window.crypto.subtle) {
+    try {
+      const encoded = new TextEncoder().encode(raw);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      _cachedFingerprint = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      return _cachedFingerprint;
+    } catch (e) {
+      console.warn("Crypto API failed, falling back to basic hash.");
+    }
+  }
+
+  let hash = 0;
+  for (let i = 0; i < raw.length; i++) {
+    const char = raw.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  _cachedFingerprint = 'fallback-' + Math.abs(hash).toString(16);
   return _cachedFingerprint;
 }
 
@@ -107,11 +121,10 @@ export const company = {
 
 export const navigation = [
   { name: "Dashboard", icon: "LayoutDashboard", path: "/" },
-  { name: "Inventory", icon: "Package2", path: "/inventory" },
+  { name: "Inventory & Stock", icon: "Package2", path: "/inventory" },
   { name: "Categories", icon: "Tags", path: "/categories" },
-  { name: "QR / Barcode", icon: "ScanLine", path: "/qr" },
+  { name: "Barcode Scanner", icon: "ScanLine", path: "/qr" },
   { name: "Issues & Returns", icon: "ArrowLeftRight", path: "/transactions" },
-  { name: "Stock", icon: "Boxes", path: "/stock" },
   { name: "Allocations", icon: "Users", path: "/allocations" },
   { name: "Reports", icon: "FileBarChart2", path: "/reports" },
   { name: "Audit Logs", icon: "ClipboardList", path: "/audit" },

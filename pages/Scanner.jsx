@@ -167,8 +167,14 @@ export default function Scanner() {
             >
               <span className="material-symbols-outlined text-xl">close</span>
             </button>
+          <div className="relative overflow-hidden rounded-xl bg-slate-950 border border-slate-700 shadow-inner">
+            <div id="reader" className="w-full overflow-hidden rounded-xl min-h-[280px]"></div>
+
+            {/* Simple Rectangle Guide */}
+            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center p-4">
+              <div className="w-64 h-40 sm:w-72 sm:h-44 rounded-xl border-2 border-emerald-400 bg-transparent shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
+            </div>
           </div>
-          <div id="reader" className="w-full overflow-hidden rounded-xl border border-border bg-white p-2"></div>
         </div>
       )}
 

@@ -6,32 +6,27 @@
 
 ## ✨ Features
 
-- 📦 **Product & Category management** with Barcode generation
-- 🔍 **QR / Barcode scanner** using device camera (mobile-friendly)
-- 📊 **Dashboard** with live stock stats and low-stock alerts
-- 📋 **Full audit trail** — every stock change logged with user, IP, device
-- 🔐 **Secure login** — SHA-256 (client) + bcrypt (server), single-device session lock
-- 📱 **Fully responsive** — works on desktop, tablet, and Android/iOS
-- 🌐 **100% offline** — no CDN dependencies, all assets bundled locally
-- 📄 **Export reports** — PDF and Excel from the Reports page
+- 📦 **Inventory & Stock Management**: Product catalog with SKU, Barcode, UOM, storage location, authorized vs system stock, and live condition tracking.
+- 🗂️ **Categories & Subcategories**: Clean 2-column master-detail hierarchy management for taxonomies and nested item groups.
+- 🔍 **Barcode & QR Terminal**: Instant product scanning with camera viewfinder and manual lookup for issue and return workflows.
+- 📊 **Executive Dashboard**: Real-time KPI summaries, stock-in/stock-out metrics, and low-stock reorder warnings.
+- 🔄 **Issues & Returns**: Transaction tracking linked to users and departments with automatic stock adjustments.
+- 👥 **Allocations**: Dedicated log for department and user asset assignments.
+- 📋 **Full Security Audit Trail**: Every transaction, login, category change, and adjustment logged with user, IP, and device fingerprint.
+- 🔐 **Secure Authentic Login**: Bcrypt password hashing (cost factor 12), account lockout protection, and single-device session locking.
+- 📥 **CSV Bulk Import & Export**: Import full inventory sheets via CSV template and export live stock reports.
+- 📱 **Mobile & Tablet Ready**: Responsive interface accessible across local Wi-Fi.
+- 🌐 **100% Offline**: Zero external CDN dependencies; all libraries bundled locally.
 
 ---
 
-## 🔐 Security Model (Method 3)
+## 🔐 Security Architecture
 
-```
-Browser:  SHA-256( per-user-salt + plaintext_password )  →  sends hash only
-Server:   bcrypt( sha256_hex )                           →  stored in DB
-Network:  plaintext password NEVER transmitted
-```
-
-**Additional protections:**
-- Per-user random salt stored in DB (prevents rainbow table attacks)
-- bcrypt cost factor 12 (computationally expensive to brute-force)
-- Account lockout after 5 failed attempts (15-minute cooldown)
-- Single-device session — logging in from a new device kills the old session
-- Device fingerprint attached to every request (browser-computed, offline SHA-256)
-- Every action (login, logout, stock change, category add) written to `audit_logs`
+- **Password Hashing**: Standard `bcrypt` with cost factor 12 stored in PostgreSQL.
+- **Account Lockout**: 5 failed login attempts trigger an automatic 15-minute account lock.
+- **Single-Device Session**: Active session tokens are unique per user; logging in from a new device kicks prior active sessions.
+- **Hardware/Browser Fingerprinting**: Offline SHA-256 fingerprint generated from browser attributes is verified on every request.
+- **Audit Logging**: Every sensitive action (login, logout, stock adjustment, category update) is recorded in `audit_logs`.
 
 ---
 
@@ -41,24 +36,24 @@ Network:  plaintext password NEVER transmitted
 |---|---|
 | Frontend | React 18 + Vite 5 |
 | Styling | Tailwind CSS v4 |
-| Icons | Material Symbols (bundled locally via npm) |
-| Backend | PHP 8.x built-in server |
+| Icons | Lucide React + Material Symbols (bundled locally) |
+| Backend | PHP 8.x (Built-in Server or Apache/Nginx) |
 | Database | PostgreSQL 14+ |
 | Barcode Scanning | html5-qrcode |
 | Charts | Recharts |
-| Export | jsPDF + SheetJS |
+| Export | jsPDF + SheetJS (XLSX) |
 
 ---
 
 ## 📋 Prerequisites
 
-Install these before starting:
+Install these before setting up:
 
-| Tool | Version | Download |
+| Tool | Minimum Version | Download |
 |---|---|---|
 | Node.js | 18+ | https://nodejs.org |
-| npm | 9+ | (comes with Node) |
-| PHP | 8.0+ | https://www.php.net/downloads |
+| npm | 9+ | (included with Node.js) |
+| PHP | 8.0+ (with PDO PostgreSQL extension) | https://www.php.net/downloads |
 | PostgreSQL | 14+ | https://www.postgresql.org/download |
 
 ---
@@ -69,7 +64,7 @@ Install these before starting:
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git
-cd YOUR_REPO
+cd Offline_inventory_system
 ```
 
 ### 2. Install frontend dependencies
@@ -78,31 +73,30 @@ cd YOUR_REPO
 npm install
 ```
 
-### 3. Set up the database
+### 3. Set up PostgreSQL Database
 
-#### 3a. Create a PostgreSQL database
-
+#### 3a. Create a database
+In `psql` or pgAdmin:
 ```sql
--- In psql or pgAdmin:
 CREATE DATABASE inventory_db;
 ```
 
 #### 3b. Run the schema
-
 ```bash
 psql -U postgres -d inventory_db -f schema.sql
 ```
+> Creates all core tables: `roles`, `departments`, `users`, `categories`, `subcategories`, `products`, `transactions`, `user_tokens`, and `audit_logs`.
 
-> This creates all tables: `users`, `products`, `categories`, `subcategories`, `transactions`, `audit_logs`, `user_tokens`.
+---
 
-### 4. Configure the database connection
+### 4. Configure Database Connection
 
+Copy the sample configuration:
 ```bash
 cp config.example.php config.php
 ```
 
-Edit `config.php` and fill in your PostgreSQL credentials:
-
+Edit `config.php` and supply your PostgreSQL credentials:
 ```php
 <?php
 return [
@@ -115,14 +109,16 @@ return [
 ];
 ```
 
-### 5. Create user accounts
+---
 
+### 5. Seed Initial Users & Passwords
+
+Copy the credentials template:
 ```bash
 cp seed_credentials.example.php seed_credentials.php
 ```
 
-Edit `seed_credentials.php` and set **strong passwords** for each account:
-
+Edit `seed_credentials.php` to set passwords for your accounts:
 ```php
 <?php
 return [
@@ -133,10 +129,7 @@ return [
 ];
 ```
 
-> ⚠️ `seed_credentials.php` is in `.gitignore` and will **never** be committed to GitHub.
-
-Then run the seeder:
-
+Run the seeder script:
 ```bash
 php seed_users.php
 ```
@@ -144,71 +137,43 @@ php seed_users.php
 Expected output:
 ```
 === Invendor Secure User Seeding ===
-Created : admin    OK — salt and bcrypt hash stored securely.
-Created : manager  OK — salt and bcrypt hash stored securely.
-Created : staff1   OK — salt and bcrypt hash stored securely.
-Created : staff2   OK — salt and bcrypt hash stored securely.
-=== Done. ===
+Updated : admin    OK — bcrypt hash stored securely.
+Updated : manager  OK — bcrypt hash stored securely.
+Updated : staff1   OK — bcrypt hash stored securely.
+=== Done. Passwords are NOT stored here — only in the DB. ===
 ```
+
+> ⚠️ `config.php` and `seed_credentials.php` are listed in `.gitignore` and will never be committed to Git.
 
 ---
 
 ## ▶️ Running the Application
 
-You need **two terminals** running simultaneously.
+You need **two terminal windows** running simultaneously:
 
 ### Terminal 1 — PHP Backend
-
 ```bash
 php -S 0.0.0.0:8000
 ```
+> Backend API accessible at `http://localhost:8000` (or `http://YOUR_LAN_IP:8000`).
 
-> Backend available at `http://YOUR_LAN_IP:8000`
-
-### Terminal 2 — React Frontend (Vite dev server)
-
+### Terminal 2 — React Frontend (Vite)
 ```bash
 npm run dev
 ```
-
-> Frontend available at `https://YOUR_LAN_IP:5173`
-
-### Find your LAN IP (to access from other devices)
-
-**Windows:**
-```bash
-ipconfig
-# Look for: IPv4 Address . . . . . . . . : 192.168.x.x
-```
-
-**Linux/macOS:**
-```bash
-ip addr show   # or  ifconfig
-```
+> Frontend accessible at `https://localhost:5173` (or `https://YOUR_LAN_IP:5173`).
 
 ---
 
-## 📱 Accessing from Mobile (Android / iOS)
+## 📱 Accessing from Mobile Devices on Local Network
 
-1. Connect your phone to the **same Wi-Fi network** as the host PC
-2. Open Chrome on your phone
-3. Navigate to: `https://192.168.x.x:5173`
-   - Replace `192.168.x.x` with your PC's LAN IP
-4. Accept the self-signed certificate warning (tap **Advanced → Proceed**)
-5. On the login page → tap **Server settings** → set API URL to `http://192.168.x.x:8000`
-
-> The frontend uses HTTPS (self-signed cert via `@vitejs/plugin-basic-ssl`) so the camera barcode scanner works on mobile. The backend uses HTTP on port 8000.
-
----
-
-## 🔑 Default Roles
-
-| Role | ID | Description |
-|---|---|---|
-| Admin | 1 | Full access |
-| Manager | 2 | Full access |
-| Staff | 3 | Can scan, issue, and return |
-| Viewer | 4 | Read-only (future) |
+1. Connect your phone or tablet to the **same Wi-Fi/LAN** as the host computer.
+2. Find your host PC's local IP address:
+   - **Windows:** Run `ipconfig` (Look for `IPv4 Address`, e.g. `192.168.1.100`)
+   - **macOS / Linux:** Run `ifconfig` or `ip addr show`
+3. On your mobile browser, open: `https://192.168.1.100:5173`
+4. Accept the local SSL certificate warning (**Advanced → Proceed**).
+5. On the Login page, click **Server settings** and confirm the API URL points to `http://192.168.1.100:8000`.
 
 ---
 
@@ -216,81 +181,41 @@ ip addr show   # or  ifconfig
 
 ```
 ├── components/
-│   └── Layout.jsx              # Sidebar + mobile header
+│   ├── layout/
+│   │   ├── Sidebar.jsx              # Main navigation sidebar
+│   │   └── Topbar.jsx               # Header bar & user controls
+│   ├── dashboard/
+│   │   └── StatusDonut.jsx          # Stock status donut chart
+│   ├── ui/
+│   │   ├── Badge.jsx                # Semantic status badges
+│   │   └── Card.jsx                 # Styled card wrapper
+│   └── Layout.jsx                   # Master responsive layout wrapper
 ├── pages/
-│   ├── Login.jsx               # SHA-256 secure login
-│   ├── Dashboard.jsx           # Stats, low-stock chart, activity
-│   ├── Products.jsx            # Product grid + barcodes
-│   ├── Categories.jsx          # Category / subcategory management
-│   ├── Scanner.jsx             # QR/barcode scanner + issue/return
-│   └── Reports.jsx             # Transactions + Audit log tabs
-├── api.js                      # Fetch wrapper (auth token + device fingerprint)
-├── App.jsx                     # Router
-├── App.css                     # Design system + Tailwind
-├── main.jsx                    # Entry point + material-symbols import
-├── index.html                  # HTML shell (no CDN links — fully offline)
-├── index.php                   # PHP API (all endpoints)
-├── db.php                      # DB connection + auto-migration
-├── schema.sql                  # PostgreSQL schema
-├── seed_users.php              # User seeding script (no passwords inside)
-├── seed_credentials.example.php  # ✅ Template — safe to commit
-├── seed_credentials.php        # ❌ Your real passwords — gitignored
-├── config.example.php          # ✅ DB config template — safe to commit
-├── config.php                  # ❌ Your real DB config — gitignored
-├── vite.config.js              # Vite + HTTPS + host 0.0.0.0
-└── .gitignore                  # Blocks config.php, seed_credentials.php
+│   ├── Login.jsx                    # Authentic credential login
+│   ├── DashboardPage.jsx            # Inventory metrics & overview charts
+│   ├── InventoryPage.jsx            # Complete catalog, stock CRUD & CSV import/export
+│   ├── Categories.jsx               # Master categories & subcategories
+│   ├── QrPage.jsx                   # Barcode & camera scanning terminal
+│   ├── TransactionsPage.jsx         # Issue & return log
+│   ├── AllocationsPage.jsx          # User & department allocations
+│   ├── ReportsPage.jsx              # Comprehensive PDF/Excel reports
+│   └── AuditPage.jsx                # Full security audit log
+├── csv template/
+│   └── Inventory_Import_Template.csv # Standardized bulk import template
+├── api.js                           # API client (tokens + offline fingerprinting)
+├── App.jsx                          # React Router configuration
+├── App.css                          # Design tokens & styling
+├── main.jsx                         # React bootstrap entry point
+├── index.html                       # HTML shell
+├── index.php                        # PHP REST API Router & Controllers
+├── db.php                           # PDO Connection & auto-migrations
+├── schema.sql                       # PostgreSQL schema definition
+├── seed_users.php                   # User seeder script
+├── seed_credentials.example.php     # Template credentials file
+├── config.example.php               # Template database config
+├── vite.config.js                   # Vite config with HTTPS & host 0.0.0.0
+└── .gitignore                       # Git ignore list
 ```
-
----
-
-## 🔒 Files Blocked from GitHub (`.gitignore`)
-
-These files contain secrets and are **never committed**:
-
-| File | Contains |
-|---|---|
-| `config.php` | Database host, username, password |
-| `seed_credentials.php` | User account plaintext passwords |
-
-Always use the `.example.php` versions as templates.
-
----
-
-## 🛡️ Audit Log
-
-Every action is recorded in the `audit_logs` table:
-
-- ✅ Successful logins (with IP + device fingerprint)
-- ❌ Failed login attempts + account lockouts
-- 📦 Product additions and stock changes (before → after values)
-- 🗂️ Category and subcategory additions
-- 🚪 Logouts
-
-View the full audit trail in the app: **Reports → Audit Log tab** (exportable as PDF).
-
----
-
-## 🔄 Updating User Passwords
-
-Edit `seed_credentials.php` with new passwords, then:
-
-```bash
-php seed_users.php
-```
-
-This generates a new salt + bcrypt hash and **invalidates all active sessions** for that user.
-
----
-
-## 📦 Production Build
-
-To build the frontend for production (served by PHP or nginx):
-
-```bash
-npm run build
-```
-
-Static files are output to `dist/`. Point your web server at that folder.
 
 ---
 
@@ -298,15 +223,14 @@ Static files are output to `dist/`. Point your web server at that folder.
 
 | Problem | Solution |
 |---|---|
-| Icons showing as text (e.g. `space_dashboard`) | Run `npm install` — material-symbols must be installed |
-| Camera not working on mobile | Must use HTTPS (`https://IP:5173`), not HTTP |
-| "Cannot connect to server" | Check PHP is running on port 8000, set correct IP in Server settings |
-| Login fails after re-seeding | Sessions invalidated — just log in again with new password |
-| Database connection error | Check `config.php` credentials and PostgreSQL is running |
-| Account locked | Wait 15 minutes or manually run: `UPDATE users SET failed_attempts=0, locked_until=NULL WHERE username='X';` |
+| `Database connection unavailable` | Ensure PostgreSQL service is running and verify credentials in `config.php`. |
+| `Cannot connect to backend server` | Ensure `php -S 0.0.0.0:8000` is running in Terminal 1. |
+| Camera scanner permissions blocked | Access the site via `https://` (camera APIs require secure context). |
+| `Account locked. Try again in X minute(s)` | Wait 15 minutes or reset failed attempts: `UPDATE users SET failed_attempts=0, locked_until=NULL WHERE username='admin';` |
+| Password update / reset | Edit `seed_credentials.php` and rerun `php seed_users.php`. |
 
 ---
 
 ## 📄 License
 
-MIT — free to use, modify, and distribute.
+MIT — Free to use, modify, and distribute.

@@ -3,6 +3,8 @@ node_modules/
 dist/
 dist-ssr/
 *.local
+scratch/
+csv template/
 
 # ── Environment & secrets ─────────────────────────────────────
 .env

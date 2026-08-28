@@ -201,22 +201,14 @@ export default function Products() {
               </button>
             </div>
             
-            {/* Barcode & QR Section */}
+            {/* Barcode Section */}
             <div className="bg-gradient-to-b from-surface-raised to-white p-6 flex flex-col items-center rounded-t-2xl relative">
               
               {/* Barcode */}
-              <div className="w-full flex flex-col items-center mb-4">
-                <span className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2">Scanner Gun (1D)</span>
+              <div className="w-full flex flex-col items-center mb-2">
+                <span className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2">Item 1D Barcode</span>
                 <div ref={barcodeRef} className="p-3 bg-white rounded-xl shadow-sm border border-border overflow-hidden w-full flex justify-center">
                   <Barcode value={selectedProduct.barcode || selectedProduct.sku} width={1.8} height={50} displayValue={true} margin={0} />
-                </div>
-              </div>
-
-              {/* QR Code */}
-              <div className="w-full flex flex-col items-center mb-2">
-                <span className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2">Mobile Camera (2D)</span>
-                <div ref={qrRef} className="p-3 bg-white rounded-xl shadow-sm border border-border flex justify-center items-center">
-                  <QRCodeSVG value={selectedProduct.barcode || selectedProduct.sku} size={100} />
                 </div>
               </div>
 
@@ -241,20 +233,13 @@ export default function Products() {
                 <span className="text-sm font-semibold text-text-primary">{selectedProduct.min_stock_level}</span>
               </div>
               
-              <div className="grid grid-cols-2 gap-2 mt-4">
+              <div className="mt-4">
                 <button 
                   onClick={downloadBarcode}
-                  className="btn-primary w-full justify-center text-xs px-2"
+                  className="btn-primary w-full justify-center text-xs px-2 py-2.5"
                 >
                   <Download size={14} />
-                  Barcode
-                </button>
-                <button 
-                  onClick={downloadQR}
-                  className="btn-primary w-full justify-center text-xs px-2 bg-purple-600 hover:bg-purple-700"
-                >
-                  <Download size={14} />
-                  QR Code
+                  Download Product Barcode
                 </button>
               </div>
             </div>
