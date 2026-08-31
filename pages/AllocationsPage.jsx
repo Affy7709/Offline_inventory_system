@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Badge } from '../components/ui/Badge'
-import { getApiBase, apiFetch } from '../api'
+import { getApiBase, apiFetch, subscribeDataSync } from '../api'
 
 export default function AllocationsPage() {
   const [allocations, setAllocations] = useState([])
@@ -8,12 +8,18 @@ export default function AllocationsPage() {
 
   const base = getApiBase()
 
-  useEffect(() => {
+  const loadData = () => {
     apiFetch(`${base}/index.php?action=allocations`)
       .then(r => r.json())
       .then(d => setAllocations(Array.isArray(d) ? d : []))
       .catch(console.error)
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    loadData()
+    const unsubscribe = subscribeDataSync(loadData, 3500)
+    return () => unsubscribe()
   }, [base])
 
   return (
@@ -40,24 +46,30 @@ export default function AllocationsPage() {
                   <td colSpan={5} className="py-8 text-center text-slate-400">Loading allocations…</td>
                 </tr>
               ) : allocations.length > 0 ? (
-                allocations.map((entry) => (
-                  <tr key={entry.id} className="hover:bg-slate-50/80 transition">
-                    <td className="py-3 pr-4">
-                      <div className="font-semibold text-slate-900">{entry.username || 'Employee'}</div>
-                      <div className="text-xs text-slate-500">{entry.dept_name || 'General'}</div>
-                    </td>
-                    <td className="py-3 pr-4 font-medium text-slate-800">{entry.product_name}</td>
-                    <td className="py-3 pr-4 text-slate-900 font-bold text-center">{entry.quantity}</td>
-                    <td className="py-3 pr-4">
-                      <Badge tone={entry.type === 'issue' ? 'info' : 'success'}>
-                        {entry.type === 'issue' ? 'Issued' : 'Returned'}
-                      </Badge>
-                    </td>
-                    <td className="py-3 pr-4 text-slate-500 text-xs font-mono">
-                      {String(entry.transaction_date || '').split('T')[0]}
-                    </td>
-                  </tr>
-                ))
+                allocations.map((entry) => {
+                  const personMatch = String(entry.notes || '').match(/(?:Issued To|Returned By):\s*([^|]+)/i)
+                  const targetPerson = personMatch ? personMatch[1].trim() : (entry.username || 'Employee')
+                  return (
+                    <tr key={entry.id} className="hover:bg-slate-50/80 transition">
+                      <td className="py-3 pr-4">
+                        <div className="font-semibold text-slate-900">{targetPerson}</div>
+                        <div className="text-xs text-slate-500">
+                          {entry.username && entry.username !== targetPerson ? `Logged by: ${entry.username}` : (entry.dept_name || 'General')}
+                        </div>
+                      </td>
+                      <td className="py-3 pr-4 font-medium text-slate-800">{entry.product_name}</td>
+                      <td className="py-3 pr-4 text-slate-900 font-bold text-center">{entry.quantity}</td>
+                      <td className="py-3 pr-4">
+                        <Badge tone={entry.type === 'issue' ? 'info' : 'success'}>
+                          {entry.type === 'issue' ? 'Issued' : 'Returned'}
+                        </Badge>
+                      </td>
+                      <td className="py-3 pr-4 text-slate-500 text-xs font-mono">
+                        {String(entry.transaction_date || '').split('T')[0]}
+                      </td>
+                    </tr>
+                  )
+                })
               ) : (
                 <tr>
                   <td colSpan={5} className="py-8 text-center text-slate-400">No allocation records found</td>

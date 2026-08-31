@@ -1,38 +1,53 @@
 import { useState, useEffect } from 'react'
-import { FileSpreadsheet, FileText } from 'lucide-react'
+import { FileSpreadsheet, FileText, ChevronLeft, ChevronRight } from 'lucide-react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
-import { getApiBase, apiFetch } from '../api'
+import { getApiBase, apiFetch, subscribeDataSync } from '../api'
+import { useAlert } from '../components/ui/AlertContext'
 
 export default function AuditPage() {
+  const { toast } = useAlert()
   const [auditLogs, setAuditLogs] = useState([])
   const [loading, setLoading] = useState(true)
 
+  // Pagination state (20 per page)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalLogs, setTotalLogs] = useState(0)
+  const limit = 20
+
   const base = getApiBase()
 
-  const loadAuditLogs = (silent = false) => {
+  const loadAuditLogs = (page = currentPage, silent = false) => {
     if (!silent) setLoading(true)
-    apiFetch(`${base}/index.php?action=audit_logs`)
+    apiFetch(`${base}/index.php?action=audit_logs&page=${page}&limit=${limit}`)
       .then(r => r.json())
-      .then(d => setAuditLogs(Array.isArray(d) ? d : []))
+      .then(d => {
+        if (d && Array.isArray(d.data)) {
+          setAuditLogs(d.data)
+          setTotalPages(d.total_pages || 1)
+          setTotalLogs(d.total || 0)
+        } else if (Array.isArray(d)) {
+          setAuditLogs(d)
+        }
+      })
       .catch(console.error)
       .finally(() => { if (!silent) setLoading(false) })
   }
 
   useEffect(() => {
-    loadAuditLogs(false)
+    loadAuditLogs(currentPage, false)
 
-    // Live multi-device auto-sync polling
-    const interval = setInterval(() => loadAuditLogs(true), 4000)
-    const onFocus = () => loadAuditLogs(true)
-    window.addEventListener('focus', onFocus)
+    const unsubscribe = subscribeDataSync(() => loadAuditLogs(currentPage, true), 3500)
+    return () => unsubscribe()
+  }, [base, currentPage])
 
-    return () => {
-      clearInterval(interval)
-      window.removeEventListener('focus', onFocus)
-    }
-  }, [base])
+  const handlePageChange = (newPage) => {
+    if (newPage < 1 || newPage > totalPages) return
+    setCurrentPage(newPage)
+    loadAuditLogs(newPage, false)
+  }
 
   // Helper to safely parse old and new audit detail values cleanly
   const parseAuditDetails = (rawOld = '', rawNew = '') => {
@@ -113,9 +128,10 @@ export default function AuditPage() {
       })
 
       doc.save('security_stock_audit_logs.pdf')
+      toast('Audit logs exported to PDF successfully', 'success')
     } catch (err) {
       console.error('PDF export failed:', err)
-      alert('Could not generate PDF. Please try again.')
+      toast('Could not generate PDF. Please try again.', 'error')
     }
   }
 
@@ -146,8 +162,10 @@ export default function AuditPage() {
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Audit_Logs')
       XLSX.writeFile(wb, 'security_stock_audit_logs.xlsx')
+      toast('Audit logs exported to Excel successfully', 'success')
     } catch (err) {
       console.error('Excel export failed:', err)
+      toast('Could not export Excel. Please try again.', 'error')
     }
   }
 
@@ -275,6 +293,41 @@ export default function AuditPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Footer */}
+        {totalPages > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-200 bg-slate-50/50 px-4 py-3 text-xs text-slate-600">
+            <div>
+              Showing <span className="font-semibold text-slate-900">{totalLogs > 0 ? (currentPage - 1) * limit + 1 : 0}</span> to{' '}
+              <span className="font-semibold text-slate-900">{Math.min(currentPage * limit, totalLogs)}</span> of{' '}
+              <span className="font-semibold text-slate-900">{totalLogs}</span> entries
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage <= 1 || loading}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-100 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
+              >
+                <ChevronLeft size={14} />
+                Previous
+              </button>
+
+              <span className="px-2 font-semibold text-slate-700">
+                Page {currentPage} of {totalPages}
+              </span>
+
+              <button
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage >= totalPages || loading}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-100 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
+              >
+                Next
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

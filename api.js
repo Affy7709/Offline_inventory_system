@@ -75,6 +75,59 @@ export const clearAuth = () => {
   sessionStorage.removeItem('token');
 };
 
+// ── Global Real-Time Event Sync System ─────────────────────────
+const syncChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('inventory_live_sync') : null;
+
+export const notifyDataChanged = () => {
+  try {
+    localStorage.setItem('inventory_last_updated', Date.now().toString());
+  } catch (e) {}
+
+  if (syncChannel) {
+    try { syncChannel.postMessage({ type: 'SYNC_UPDATE', timestamp: Date.now() }); } catch (e) {}
+  }
+
+  window.dispatchEvent(new CustomEvent('inventory-updated', { detail: { timestamp: Date.now() } }));
+};
+
+export const subscribeDataSync = (onUpdate, pollIntervalMs = 3500) => {
+  const handleUpdate = () => {
+    try { onUpdate(); } catch (e) { console.error('Error in sync handler:', e); }
+  };
+
+  window.addEventListener('inventory-updated', handleUpdate);
+
+  const handleStorage = (e) => {
+    if (e.key === 'inventory_last_updated') handleUpdate();
+  };
+  window.addEventListener('storage', handleStorage);
+
+  if (syncChannel) {
+    syncChannel.onmessage = (msg) => {
+      if (msg?.data?.type === 'SYNC_UPDATE') handleUpdate();
+    };
+  }
+
+  const handleFocus = () => {
+    if (document.visibilityState === 'visible') handleUpdate();
+  };
+  window.addEventListener('focus', handleFocus);
+  document.addEventListener('visibilitychange', handleFocus);
+
+  let timer = null;
+  if (pollIntervalMs > 0) {
+    timer = setInterval(handleUpdate, pollIntervalMs);
+  }
+
+  return () => {
+    window.removeEventListener('inventory-updated', handleUpdate);
+    window.removeEventListener('storage', handleStorage);
+    window.removeEventListener('focus', handleFocus);
+    document.removeEventListener('visibilitychange', handleFocus);
+    if (timer) clearInterval(timer);
+  };
+};
+
 // ── Fetch wrapper: attaches auth + device fingerprint ────────
 export const apiFetch = async (url, options = {}) => {
   const token = getAuthToken();
@@ -88,10 +141,30 @@ export const apiFetch = async (url, options = {}) => {
 
   const res = await fetch(url, { ...options, headers });
 
-  // On 401: clear auth so PrivateRoute redirects cleanly via React Router
-  // Do NOT use window.location.href — that causes blank screen
+  // On 401: clear auth only if session itself is expired/invalid
+  // Do NOT wipe auth on general action rejections or other endpoints
   if (res.status === 401) {
-    clearAuth();
+    try {
+      const clone = res.clone();
+      const body = await clone.json();
+      if (body?.error && (
+        body.error.includes('Missing authentication') ||
+        body.error.includes('expired session') ||
+        body.error.includes('device mismatch')
+      )) {
+        clearAuth();
+      }
+    } catch {
+      if (url.includes('session_check')) {
+        clearAuth();
+      }
+    }
+  }
+
+  // On successful mutations, notify all connected components & tabs for real-time live sync
+  const method = (options.method || 'GET').toUpperCase();
+  if (res.ok && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+    notifyDataChanged();
   }
 
   return res;

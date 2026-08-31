@@ -37,6 +37,17 @@ foreach ($users as $u) {
     // Standard bcrypt — cost 12
     $bcryptHash = password_hash($u['password'], PASSWORD_BCRYPT, ['cost' => 12]);
 
+    // Security Questions
+    $q1 = $u['sec_q1'] ?? null;
+    $a1_hash = !empty($u['sec_a1']) ? password_hash(strtolower(trim($u['sec_a1'])), PASSWORD_BCRYPT) : null;
+    $q2 = $u['sec_q2'] ?? null;
+    $a2_hash = !empty($u['sec_a2']) ? password_hash(strtolower(trim($u['sec_a2'])), PASSWORD_BCRYPT) : null;
+
+    // Encrypt password symmetrically so we can reveal it on 'forgot password'
+    $iv = openssl_random_pseudo_bytes(openssl_cipher_iv_length('aes-256-cbc'));
+    $encrypted = openssl_encrypt($u['password'], 'aes-256-cbc', ENCRYPTION_KEY, 0, $iv);
+    $encrypted_pwd = base64_encode($encrypted . '::' . $iv);
+
     // Upsert
     $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ?");
     $stmt->execute([$u['username']]);
@@ -47,15 +58,23 @@ foreach ($users as $u) {
     if ($existing) {
         $pdo->prepare("
             UPDATE users
-               SET password_hash = ?, role_id = ?, department_id = ?, updated_at = NOW()
+               SET password_hash = ?, role_id = ?, department_id = ?, updated_at = NOW(),
+                   sec_q1 = ?, sec_a1_hash = ?, sec_q2 = ?, sec_a2_hash = ?, encrypted_pwd = ?
              WHERE username = ?
-        ")->execute([$bcryptHash, $u['role_id'], $u['department_id'], $u['username']]);
+        ")->execute([
+            $bcryptHash, $u['role_id'], $u['department_id'], 
+            $q1, $a1_hash, $q2, $a2_hash, $encrypted_pwd, 
+            $u['username']
+        ]);
         echo "Updated : {$u['username']}\n";
     } else {
         $pdo->prepare("
-            INSERT INTO users (username, password_hash, salt, role_id, department_id)
-            VALUES (?, ?, ?, ?, ?)
-        ")->execute([$u['username'], $bcryptHash, $salt, $u['role_id'], $u['department_id']]);
+            INSERT INTO users (username, password_hash, salt, role_id, department_id, sec_q1, sec_a1_hash, sec_q2, sec_a2_hash, encrypted_pwd)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ")->execute([
+            $u['username'], $bcryptHash, $salt, $u['role_id'], $u['department_id'],
+            $q1, $a1_hash, $q2, $a2_hash, $encrypted_pwd
+        ]);
         echo "Created : {$u['username']}\n";
     }
 

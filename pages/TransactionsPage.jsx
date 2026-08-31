@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge } from '../components/ui/Badge'
-import { getApiBase, apiFetch } from '../api'
+import { getApiBase, apiFetch, subscribeDataSync } from '../api'
 
 export default function TransactionsPage() {
   const [allocations, setAllocations] = useState([])
@@ -21,6 +21,8 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     loadData()
+    const unsubscribe = subscribeDataSync(loadData, 3500)
+    return () => unsubscribe()
   }, [base])
 
   return (
@@ -59,22 +61,31 @@ export default function TransactionsPage() {
                   <td colSpan={6} className="py-8 text-center text-slate-400">Loading allocation history…</td>
                 </tr>
               ) : allocations.length > 0 ? (
-                allocations.map((row) => (
-                  <tr key={row.id} className="hover:bg-slate-50/80 transition">
-                    <td className="py-3 pr-4 text-slate-500 font-mono text-xs">
-                      {String(row.transaction_date || '').split('T')[0] || '—'}
-                    </td>
-                    <td className="py-3 pr-4 font-semibold text-slate-900">{row.product_name}</td>
-                    <td className="py-3 pr-4 text-slate-700">{row.username || row.dept_name || 'Staff'}</td>
-                    <td className="py-3 pr-4 text-slate-900 font-bold">{row.quantity}</td>
-                    <td className="py-3 pr-4">
-                      <Badge tone={row.type === 'issue' ? 'info' : 'success'}>
-                        {row.type === 'issue' ? 'Issued' : 'Returned'}
-                      </Badge>
-                    </td>
-                    <td className="py-3 pr-4 text-slate-500 text-xs">{row.notes || '—'}</td>
-                  </tr>
-                ))
+                allocations.map((row) => {
+                  const personMatch = String(row.notes || '').match(/(?:Issued To|Returned By):\s*([^|]+)/i)
+                  const targetPerson = personMatch ? personMatch[1].trim() : (row.username || row.dept_name || 'Staff')
+                  return (
+                    <tr key={row.id} className="hover:bg-slate-50/80 transition">
+                      <td className="py-3 pr-4 text-slate-500 font-mono text-xs">
+                        {String(row.transaction_date || '').split('T')[0] || '—'}
+                      </td>
+                      <td className="py-3 pr-4 font-semibold text-slate-900">{row.product_name}</td>
+                      <td className="py-3 pr-4">
+                        <span className="font-semibold text-slate-800">{targetPerson}</span>
+                        {row.username && row.username !== targetPerson && (
+                          <span className="text-[11px] text-slate-400 block font-normal">by {row.username}</span>
+                        )}
+                      </td>
+                      <td className="py-3 pr-4 text-slate-900 font-bold">{row.quantity}</td>
+                      <td className="py-3 pr-4">
+                        <Badge tone={row.type === 'issue' ? 'info' : 'success'}>
+                          {row.type === 'issue' ? 'Issued' : 'Returned'}
+                        </Badge>
+                      </td>
+                      <td className="py-3 pr-4 text-slate-500 text-xs">{row.notes || '—'}</td>
+                    </tr>
+                  )
+                })
               ) : (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-slate-400">No allocation history recorded yet</td>

@@ -17,6 +17,8 @@ $dbname = $config['db_name'] ?? getenv('DB_NAME') ?: 'inventory_db';
 $dbuser = $config['db_user'] ?? getenv('DB_USER') ?: 'postgres';
 $dbpass = $config['db_pass'] ?? getenv('DB_PASS') ?: '';
 
+define('ENCRYPTION_KEY', 'Invendor_Offline_Secure_Key_998877!');
+
 try {
     $pdo = new PDO("pgsql:host=$host;port=$port;dbname=$dbname", $dbuser, $dbpass);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -30,6 +32,11 @@ try {
     $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_attempts INTEGER DEFAULT 0");
     $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP");
     $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()");
+    $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS sec_q1 TEXT");
+    $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS sec_a1_hash VARCHAR(255)");
+    $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS sec_q2 TEXT");
+    $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS sec_a2_hash VARCHAR(255)");
+    $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS encrypted_pwd TEXT");
 
     // user_tokens: device tracking + single-device enforcement
     $pdo->exec("

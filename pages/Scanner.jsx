@@ -1,16 +1,21 @@
 import { useState, useEffect, useRef } from 'react';
 import { Html5QrcodeScanner, Html5QrcodeScanType } from 'html5-qrcode';
-import { getApiBase, apiFetch } from '../api';
+import { getApiBase, apiFetch, subscribeDataSync } from '../api';
+import { useAlert } from '../components/ui/AlertContext';
 
 export default function Scanner() {
+  const { toast, showAlert } = useAlert();
   const [sku, setSku] = useState('');
   const [product, setProduct] = useState(null);
   const [error, setError] = useState('');
   const [showCamera, setShowCamera] = useState(false);
   const [actionType, setActionType] = useState('issue');
   const [quantity, setQuantity] = useState(1);
+  const [issuedTo, setIssuedTo] = useState('');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
+  const [usersList, setUsersList] = useState([]);
+  const [deptsList, setDeptsList] = useState([]);
   const scannerRef = useRef(null);
 
   const startCamera = () => {
@@ -19,68 +24,154 @@ export default function Scanner() {
   };
 
   useEffect(() => {
+    const apiBase = getApiBase();
+    apiFetch(`${apiBase}/index.php?action=users`)
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setUsersList(d); })
+      .catch(() => {});
+    apiFetch(`${apiBase}/index.php?action=departments`)
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setDeptsList(d); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     let scanner = null;
+    let isScanning = false;
+    
     if (showCamera) {
       scanner = new Html5QrcodeScanner(
         "reader", 
-        { fps: 10, qrbox: {width: 250, height: 250}, supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA] },
-        false
+        { 
+          fps: 10, 
+          qrbox: { width: 250, height: 250 },
+          supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
+        },
+        /* verbose= */ false
       );
-      scannerRef.current = scanner;
       
       scanner.render(
         (decodedText) => {
+          if (isScanning) return;
+          isScanning = true;
+          
           setSku(decodedText);
-          handleSearch(decodedText);
-          scanner.clear();
-          scannerRef.current = null;
           setShowCamera(false);
+          if (scanner) {
+            scanner.clear().catch(e => console.error(e));
+          }
+          fetchProduct(decodedText);
         },
-        (err) => { }
+        (errorMessage) => {
+          // ignore common scan frame misses
+        }
       );
+      scannerRef.current = scanner;
     }
-    
+
     return () => {
-      if (scanner) {
-        scanner.clear().catch(e => console.error(e));
+      if (scannerRef.current) {
+        scannerRef.current.clear().catch(error => {
+          console.error("Failed to clear html5QrcodeScanner. ", error);
+        });
       }
-      scannerRef.current = null;
     };
   }, [showCamera]);
 
-  const handleSearch = async (searchSku = sku) => {
-    if (!searchSku.trim()) return;
+  useEffect(() => {
+    const unsubscribe = subscribeDataSync(() => {
+      if (product && product.sku) {
+        // Only fetch on cross-tab/focus events, avoid aggressive interval polling
+        fetchProduct(product.sku);
+      }
+    }, 0);
+    return () => unsubscribe();
+  }, [product]);
+
+  const fetchProduct = async (searchSku) => {
     setError('');
-    setProduct(null);
-    setLoading(true);
-
     const apiBase = getApiBase();
-
     try {
-      const res = await apiFetch(`${apiBase}/index.php?action=product_by_barcode&barcode=${searchSku}`);
-      const data = await res.json();
-      if (res.ok && data) {
+      const res = await apiFetch(`${apiBase}/index.php?action=scan&barcode=${encodeURIComponent(searchSku)}`);
+      if (res.ok) {
+        const data = await res.json();
         setProduct(data);
+        if (data.active_holders && data.active_holders.length === 1) {
+          setIssuedTo(data.active_holders[0].person);
+        } else {
+          setIssuedTo('');
+        }
       } else {
-        setError(data.error || 'Product not found');
+        const err = await res.json();
+        setError(err.error || 'Product not found');
+        setProduct(null);
       }
     } catch (e) {
-      setError('Connection error');
-    } finally {
-      setLoading(false);
+      setError('Failed to query product');
+      setProduct(null);
     }
   };
 
+  const handleSearch = () => {
+    if (!sku.trim()) return;
+    fetchProduct(sku.trim());
+  };
+
   const handleTransaction = async () => {
-    if (!product || quantity < 1) return;
-    
+    if (!product) return;
     if (actionType === 'issue' && quantity > product.current_stock) {
-      setError('Cannot issue more than available stock');
+      setError(`Cannot issue more than available stock (${product.current_stock})`);
       return;
+    }
+    if (actionType === 'issue' && !issuedTo.trim()) {
+      setError('Please specify the person or department to issue this item to');
+      return;
+    }
+    if (actionType === 'return') {
+      const holders = product.active_holders || [];
+      if (holders.length === 0) {
+        const msg = 'Cannot return item: this product has no active issued units.';
+        setError(msg);
+        toast(msg, 'error');
+        return;
+      }
+      if (!issuedTo.trim()) {
+        const msg = 'Returned By is a compulsory field. Please select who is returning the item.';
+        setError(msg);
+        toast(msg, 'error');
+        return;
+      }
+      const matched = holders.find(h => h.person.toLowerCase() === issuedTo.trim().toLowerCase());
+      if (!matched) {
+        const msg = `Cannot return item from '${issuedTo}'. They do not hold any issued units.`;
+        setError(msg);
+        toast(msg, 'error');
+        return;
+      }
+      const returnQty = Number(quantity || 1);
+      if (returnQty > matched.qty_held) {
+        const msg = `Cannot return ${returnQty} unit(s). ${matched.person} only holds ${matched.qty_held} issued unit(s).`;
+        setError(msg);
+        toast(msg, 'error');
+        return;
+      }
+      const authQty = Number(product.auth_qty || product.current_stock || 0);
+      const currentStock = Number(product.current_stock || 0);
+      if (authQty > 0 && (currentStock + returnQty) > authQty) {
+        const maxReturnable = Math.max(0, authQty - currentStock);
+        const msg = `Cannot return ${returnQty} unit(s). Stock after return (${currentStock + returnQty}) would exceed Authorized Qty (${authQty}). Max returnable: ${maxReturnable}.`;
+        setError(msg);
+        toast(msg, 'error');
+        return;
+      }
     }
 
     setLoading(true);
     const apiBase = getApiBase();
+
+    const compiledNotes = actionType === 'issue'
+      ? `Issued To: ${issuedTo.trim()}${notes.trim() ? ` | ${notes.trim()}` : ''}`
+      : `Returned By: ${issuedTo.trim() || product.issued_to || 'Staff'}${notes.trim() ? ` | ${notes.trim()}` : ''}`;
 
     try {
       const res = await apiFetch(`${apiBase}/index.php?action=transaction`, {
@@ -89,23 +180,29 @@ export default function Scanner() {
         body: JSON.stringify({
           product_id: product.id,
           type: actionType,
-          quantity: quantity,
-          notes: notes
+          quantity: Number(quantity),
+          issued_to: issuedTo.trim(),
+          notes: compiledNotes
         })
       });
       
       const data = await res.json();
       if (res.ok && data.success) {
+        const actionLabel = actionType === 'issue' ? 'Stock Issue' : 'Stock Return';
+        const targetPerson = issuedTo.trim() || product.issued_to || 'Assignee';
+        toast(`${actionLabel} successful for ${product.name} (${quantity} units to/from ${targetPerson})`, 'success');
         setProduct(null);
         setSku('');
         setQuantity(1);
+        setIssuedTo('');
         setNotes('');
-        alert(`${actionType.toUpperCase()} successful!`);
       } else {
         setError(data.error || 'Transaction failed');
+        toast(data.error || 'Transaction failed', 'error');
       }
     } catch (e) {
       setError('Connection error');
+      toast('Connection error while processing transaction', 'error');
     } finally {
       setLoading(false);
     }
@@ -167,6 +264,7 @@ export default function Scanner() {
             >
               <span className="material-symbols-outlined text-xl">close</span>
             </button>
+          </div>
           <div className="relative overflow-hidden rounded-xl bg-slate-950 border border-slate-700 shadow-inner">
             <div id="reader" className="w-full overflow-hidden rounded-xl min-h-[280px]"></div>
 
@@ -255,38 +353,129 @@ export default function Scanner() {
 
             {/* Form */}
             <div className="space-y-4">
+              {product.active_holders && product.active_holders.length > 0 ? (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1.5">
+                  <div className="text-amber-800 font-semibold flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[16px] text-amber-700">assignment_ind</span>
+                    <span>Currently Issued To ({product.active_holders.length} {product.active_holders.length === 1 ? 'person' : 'people'}):</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {product.active_holders.map(h => (
+                      <span key={h.person} className="bg-amber-100/90 border border-amber-300 text-amber-900 font-bold px-2 py-0.5 rounded text-[11px]">
+                        👤 {h.person}: <span className="text-amber-950 font-black">{h.qty_held} {h.qty_held === 1 ? 'unit' : 'units'}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                actionType === 'return' && (
+                  <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-medium flex items-center gap-2">
+                    <span className="material-symbols-outlined text-rose-600 text-base">block</span>
+                    <span><strong>Cannot Return:</strong> This product has no active issued units. Only items that are currently issued can be returned.</span>
+                  </div>
+                )
+              )}
+
+              {actionType === 'return' && product.active_holders && product.active_holders.length > 0 && (
+                <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-xl text-xs flex items-center justify-between text-blue-800">
+                  <span>Authorized Quota: <strong>{product.auth_qty || product.current_stock}</strong> | Current In Stock: <strong>{product.current_stock}</strong></span>
+                  {(() => {
+                    const matched = product.active_holders?.find(h => h.person.toLowerCase() === issuedTo.trim().toLowerCase());
+                    return matched ? (
+                      <span className="font-bold text-blue-900 bg-blue-100 px-2 py-0.5 rounded">
+                        Max Returnable ({matched.person}): {matched.qty_held} units
+                      </span>
+                    ) : (
+                      <span className="font-medium text-blue-700">Select returner below</span>
+                    );
+                  })()}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
+                  {actionType === 'issue' ? 'Issue To / Assignee (Person or Dept) *' : 'Returned By (Select Who Is Returning) *'}
+                </label>
+                {actionType === 'issue' ? (
+                  <input 
+                    type="text" 
+                    required
+                    placeholder="e.g. John Doe (IT Dept)"
+                    value={issuedTo} 
+                    onChange={e => setIssuedTo(e.target.value)} 
+                    className="input-field py-3 font-semibold" 
+                  />
+                ) : (
+                  <select
+                    required
+                    disabled={!product.active_holders || product.active_holders.length === 0}
+                    value={issuedTo}
+                    onChange={e => setIssuedTo(e.target.value)}
+                    className="input-field py-3 font-semibold disabled:opacity-50 bg-white"
+                  >
+                    <option value="">-- Select Who Is Returning (Compulsory) * --</option>
+                    {product.active_holders && product.active_holders.map(h => (
+                      <option key={h.person} value={h.person}>
+                        👤 {h.person} ({h.qty_held} {h.qty_held === 1 ? 'unit' : 'units'} held)
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Quantity</label>
                 <div className="relative">
-                  <input 
-                    type="number" 
-                    min="1" 
-                    max={actionType === 'issue' ? product.current_stock : 9999}
-                    value={quantity} 
-                    onChange={e => setQuantity(e.target.value)} 
-                    className="input-field font-bold text-lg py-3" 
-                  />
-                  {actionType === 'issue' && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-text-tertiary font-medium">
-                      Max: {product.current_stock}
-                    </div>
-                  )}
+                  {(() => {
+                    const matched = actionType === 'return' ? product.active_holders?.find(h => h.person.toLowerCase() === issuedTo.trim().toLowerCase()) : null;
+                    const maxBound = actionType === 'issue' 
+                      ? product.current_stock 
+                      : (matched ? matched.qty_held : 1);
+                    return (
+                      <>
+                        <input 
+                          type="number" 
+                          min="1" 
+                          max={maxBound}
+                          value={quantity} 
+                          onChange={e => setQuantity(e.target.value)} 
+                          disabled={actionType === 'return' && (!product.active_holders || product.active_holders.length === 0 || !issuedTo)}
+                          className="input-field font-bold text-lg py-3 disabled:opacity-50" 
+                        />
+                        {actionType === 'issue' && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-text-tertiary font-medium">
+                            Max: {product.current_stock}
+                          </div>
+                        )}
+                        {actionType === 'return' && matched && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-text-tertiary font-medium">
+                            Max for {matched.person}: {matched.qty_held}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
+
               <div>
-                <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">Allocation Notes / Assignee</label>
+                <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
+                  {actionType === 'issue' ? 'Purpose / Remarks (Optional)' : 'Return Condition / Notes (Optional)'}
+                </label>
                 <input 
                   type="text" 
-                  placeholder="e.g. Assigned to John (IT Dept)"
+                  placeholder={actionType === 'issue' ? "e.g. Project deployment" : "e.g. Good condition / Completed project"}
                   value={notes} 
                   onChange={e => setNotes(e.target.value)} 
-                  className="input-field py-3" 
+                  disabled={actionType === 'return' && (!product.active_holders || product.active_holders.length === 0)}
+                  className="input-field py-3 disabled:opacity-50" 
                 />
               </div>
+
               <div className="pt-4 mt-4 border-t border-border">
                 <button 
                   onClick={handleTransaction} 
-                  disabled={loading}
+                  disabled={loading || (actionType === 'return' && (!product.active_holders || product.active_holders.length === 0 || !issuedTo))}
                   className={`w-full py-3.5 rounded-xl font-bold text-white shadow-sm transition-all flex justify-center items-center gap-2 ${
                     actionType === 'issue' ? 'bg-danger hover:bg-red-600' : 'bg-success hover:bg-emerald-600'
                   } disabled:opacity-50 disabled:cursor-not-allowed`}

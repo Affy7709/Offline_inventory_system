@@ -156,7 +156,146 @@ function audit(
 
 // Max failed login attempts before lockout
 const MAX_FAILED = 5;
-const LOCKOUT_MINUTES = 15;
+const LOCKOUT_MINUTES = 5;
+
+function verify_admin_password(PDO $pdo, array $user, string $password): bool
+{
+    if ($user['role_name'] !== 'Admin') {
+        http_response_code(403);
+        echo json_encode(['error' => 'Permission denied. Admins only.']);
+        exit;
+    }
+    if (!$password) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Admin password required.']);
+        exit;
+    }
+    $stmt = $pdo->prepare("SELECT password_hash, failed_attempts, locked_until FROM users WHERE id = ?");
+    $stmt->execute([$user['id']]);
+    $u = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($u && $u['locked_until'] && strtotime($u['locked_until']) > time()) {
+        $remainingSecs = max(1, strtotime($u['locked_until']) - time());
+        $mins = max(1, (int) ceil($remainingSecs / 60));
+        http_response_code(429);
+        echo json_encode([
+            'error' => "Account locked due to 5 failed attempts.",
+            'locked' => true,
+            'remaining_seconds' => $remainingSecs,
+            'remaining_minutes' => $mins
+        ]);
+        exit;
+    }
+
+    if ($u && password_verify($password, $u['password_hash'])) {
+        $pdo->prepare("UPDATE users SET failed_attempts=0, locked_until=NULL WHERE id=?")
+            ->execute([$user['id']]);
+        return true;
+    } else {
+        $fails = (int) ($u['failed_attempts'] ?? 0) + 1;
+        if ($fails >= MAX_FAILED) {
+            $lock = date('Y-m-d H:i:s', strtotime('+' . LOCKOUT_MINUTES . ' minutes'));
+            $pdo->prepare("UPDATE users SET failed_attempts=?, locked_until=? WHERE id=?")
+                ->execute([$fails, $lock, $user['id']]);
+            http_response_code(429);
+            echo json_encode([
+                'error' => "5 failed attempts reached. Account is locked.",
+                'locked' => true,
+                'remaining_seconds' => LOCKOUT_MINUTES * 60,
+                'remaining_minutes' => LOCKOUT_MINUTES
+            ]);
+            exit;
+        } else {
+            $pdo->prepare("UPDATE users SET failed_attempts=?, locked_until=NULL WHERE id=?")
+                ->execute([$fails, $user['id']]);
+            http_response_code(403);
+            echo json_encode([
+                'error' => 'Invalid admin password.',
+                'locked' => false
+            ]);
+            exit;
+        }
+    }
+}
+
+/**
+ * Calculate the currently active holders (assignees) and their outstanding issued quantities
+ * for a specific product based on all past issue & return transactions.
+ */
+function get_product_active_holders(PDO $pdo, int $productId, ?array $product = null): array
+{
+    if (!$product) {
+        $stmt = $pdo->prepare("SELECT id, name, current_stock, auth_qty, issued_to FROM products WHERE id = ?");
+        $stmt->execute([$productId]);
+        $product = $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+    if (!$product) return [];
+
+    $stmt = $pdo->prepare("
+        SELECT type, quantity, notes
+          FROM transactions
+         WHERE product_id = ?
+           AND type IN ('issue', 'return')
+         ORDER BY id ASC
+    ");
+    $stmt->execute([$productId]);
+    $txs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $balances = [];
+    foreach ($txs as $t) {
+        $type = $t['type'];
+        $qty = (int) $t['quantity'];
+        $notes = $t['notes'] ?? '';
+        $person = '';
+
+        if ($type === 'issue') {
+            if (preg_match('/Issued To:\s*([^|]+)/i', $notes, $m)) {
+                $person = trim($m[1]);
+            }
+        } elseif ($type === 'return') {
+            if (preg_match('/Returned By:\s*([^|]+)/i', $notes, $m)) {
+                $person = trim($m[1]);
+            }
+        }
+
+        if (!$person) {
+            $person = 'Staff';
+        }
+
+        $key = mb_strtolower($person);
+        if (!isset($balances[$key])) {
+            $balances[$key] = ['person' => $person, 'qty_held' => 0];
+        }
+        if ($type === 'issue') {
+            $balances[$key]['qty_held'] += $qty;
+        } elseif ($type === 'return') {
+            $balances[$key]['qty_held'] -= $qty;
+        }
+    }
+
+    $active = [];
+    foreach ($balances as $b) {
+        if ($b['qty_held'] > 0) {
+            $active[] = $b;
+        }
+    }
+
+    // Fallback if no transactions recorded yet but product has legacy/initial issued_to
+    if (empty($active) && !empty($product['issued_to']) && strcasecmp(trim($product['issued_to']), 'Unassigned') !== 0) {
+        $rawIssued = trim($product['issued_to']);
+        $issuedNames = array_filter(array_map('trim', explode(',', $rawIssued)));
+        foreach ($issuedNames as $rawName) {
+            if (preg_match('/^(.+?)\s*\((\d+)\s*units?\)$/i', $rawName, $m)) {
+                $active[] = ['person' => trim($m[1]), 'qty_held' => (int) $m[2]];
+            } else {
+                $held = max(1, ((int)($product['auth_qty'] ?? 0) - (int)($product['current_stock'] ?? 0)));
+                $active[] = ['person' => $rawName, 'qty_held' => $held];
+            }
+        }
+    }
+
+    return $active;
+}
 
 // ── Router ────────────────────────────────────────────────────
 switch ($action) {
@@ -190,9 +329,15 @@ switch ($action) {
 
         // Account lockout check
         if ($user && $user['locked_until'] && strtotime($user['locked_until']) > time()) {
-            $remaining = ceil((strtotime($user['locked_until']) - time()) / 60);
+            $remainingSecs = max(1, strtotime($user['locked_until']) - time());
+            $remaining = ceil($remainingSecs / 60);
             http_response_code(429);
-            echo json_encode(['error' => "Account locked. Try again in $remaining minute(s)."]);
+            echo json_encode([
+                'error' => "Account locked due to 5 failed attempts.",
+                'locked' => true,
+                'remaining_seconds' => $remainingSecs,
+                'remaining_minutes' => $remaining
+            ]);
             audit($pdo, $user['id'], $username, 'Login blocked — account locked', 'session', null, '', $ip);
             break;
         }
@@ -226,6 +371,17 @@ switch ($action) {
                 $pdo->prepare("UPDATE users SET failed_attempts=?, locked_until=? WHERE id=?")
                     ->execute([$fails, $lock, $user['id']]);
                 audit($pdo, $user['id'], $username, 'Login failed', 'Session', null, '', "Attempt $fails");
+
+                if ($fails >= MAX_FAILED) {
+                    http_response_code(429);
+                    echo json_encode([
+                        'error' => "5 failed attempts reached. Account is locked.",
+                        'locked' => true,
+                        'remaining_seconds' => LOCKOUT_MINUTES * 60,
+                        'remaining_minutes' => LOCKOUT_MINUTES
+                    ]);
+                    break;
+                }
             } else {
                 audit($pdo, null, $username, 'Login failed — unknown user', 'Session', null, '', '');
             }
@@ -235,6 +391,112 @@ switch ($action) {
         break;
 
 
+
+    // ── Forgot Password ──────────────────────────────────────────
+    case 'forgot_password_step1':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') break;
+        $body = json_decode(file_get_contents('php://input'), true) ?? [];
+        $username = trim($body['username'] ?? '');
+        if (!$username) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Username required']);
+            break;
+        }
+
+        $stmt = $pdo->prepare("SELECT sec_q1, sec_q2 FROM users WHERE username = ?");
+        $stmt->execute([$username]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($user && $user['sec_q1'] && $user['sec_q2']) {
+            echo json_encode([
+                'success' => true,
+                'q1' => $user['sec_q1'],
+                'q2' => $user['sec_q2']
+            ]);
+        } else {
+            // Delay to prevent user enumeration
+            usleep(rand(100000, 300000));
+            http_response_code(404);
+            echo json_encode(['error' => 'Security questions not set or user not found.']);
+        }
+        break;
+
+    case 'forgot_password_step2':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') break;
+        $body = json_decode(file_get_contents('php://input'), true) ?? [];
+        $username = trim($body['username'] ?? '');
+        $ans1 = trim($body['ans1'] ?? '');
+        $ans2 = trim($body['ans2'] ?? '');
+
+        if (!$username || !$ans1 || !$ans2) {
+            http_response_code(400);
+            echo json_encode(['error' => 'All fields required']);
+            break;
+        }
+
+        $stmt = $pdo->prepare("SELECT id, failed_attempts, locked_until, sec_a1_hash, sec_a2_hash, encrypted_pwd FROM users WHERE username = ?");
+        $stmt->execute([$username]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$user) {
+            usleep(rand(100000, 300000));
+            http_response_code(400);
+            echo json_encode(['error' => 'Invalid answers']);
+            break;
+        }
+
+        // Lockout check
+        if ($user['locked_until'] && strtotime($user['locked_until']) > time()) {
+            http_response_code(429);
+            echo json_encode(['error' => "Account locked. Try again later."]);
+            break;
+        }
+
+        if (
+            password_verify(strtolower($ans1), $user['sec_a1_hash']) &&
+            password_verify(strtolower($ans2), $user['sec_a2_hash'])
+        ) {
+            // Reset fails
+            $pdo->prepare("UPDATE users SET failed_attempts=0, locked_until=NULL WHERE id=?")
+                ->execute([$user['id']]);
+
+            // Decrypt password
+            $decrypted = null;
+            if ($user['encrypted_pwd']) {
+                $decoded = base64_decode($user['encrypted_pwd']);
+                if (strpos($decoded, '::') !== false) {
+                    list($encrypted_data, $iv) = explode('::', $decoded, 2);
+                    $decrypted = openssl_decrypt($encrypted_data, 'aes-256-cbc', ENCRYPTION_KEY, 0, $iv);
+                }
+            }
+
+            if ($decrypted) {
+                audit($pdo, $user['id'], $username, 'Recovered Password via Security Questions', 'User');
+                echo json_encode(['success' => true, 'password' => $decrypted]);
+            } else {
+                http_response_code(500);
+                echo json_encode(['error' => 'Failed to decrypt password']);
+            }
+        } else {
+            // Increment fails
+            $fails = $user['failed_attempts'] + 1;
+            $lock = $fails >= MAX_FAILED
+                ? date('Y-m-d H:i:s', strtotime('+' . LOCKOUT_MINUTES . ' minutes'))
+                : null;
+            $pdo->prepare("UPDATE users SET failed_attempts=?, locked_until=? WHERE id=?")
+                ->execute([$fails, $lock, $user['id']]);
+            
+            audit($pdo, $user['id'], $username, 'Failed Password Recovery', 'User', null, '', "Attempt $fails");
+            
+            if ($fails >= MAX_FAILED) {
+                http_response_code(429);
+                echo json_encode(['error' => "Access blocked after 5 failed attempts."]);
+            } else {
+                http_response_code(400);
+                echo json_encode(['error' => 'Invalid answers']);
+            }
+        }
+        break;
 
     // ── Logout ────────────────────────────────────────────────
     case 'logout':
@@ -387,7 +649,7 @@ switch ($action) {
                 $sql .= " WHERE s.category_id = ? ";
             }
             $sql .= " GROUP BY s.id, s.name, s.category_id, c.name ORDER BY c.name ASC, s.name ASC ";
-            
+
             $stmt = $pdo->prepare($sql);
             if ($catId) {
                 $stmt->execute([$catId]);
@@ -493,13 +755,69 @@ switch ($action) {
                 "Stock: {$stock} | Loc: {$location}"
             );
             echo json_encode(['success' => true]);
-        } elseif ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
-            if ($user['role_name'] !== 'Admin') {
-                http_response_code(403);
-                echo json_encode(['error' => 'Permission denied. Admins only.']);
+        } elseif ($_SERVER['REQUEST_METHOD'] === 'PUT') {
+            $body = json_decode(file_get_contents('php://input'), true) ?? [];
+            verify_admin_password($pdo, $user, trim($body['admin_password'] ?? ''));
+
+            $productId = (int) ($body['id'] ?? 0);
+            $subId = !empty($body['subcategory_id']) ? (int) $body['subcategory_id'] : null;
+            $name = $body['name'] ?? '';
+            $sku = $body['sku'] ?? '';
+            $barcode = $body['barcode'] ?? '';
+            $min = (int) ($body['min_stock_level'] ?? 5);
+            $location = !empty($body['location']) ? trim($body['location']) : 'Warehouse Main';
+            $uom = !empty($body['uom']) ? trim($body['uom']) : 'Unit';
+            $cond = !empty($body['condition']) ? trim($body['condition']) : 'Good condition';
+
+            if (!$productId || !$name || !$sku) {
+                http_response_code(400);
+                echo json_encode(['error' => 'Product ID, Name, and SKU are required.']);
                 break;
             }
-            $productId = (int) ($_GET['id'] ?? 0);
+
+            $stmt = $pdo->prepare("SELECT * FROM products WHERE id = ?");
+            $stmt->execute([$productId]);
+            $existing = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$existing) {
+                http_response_code(404);
+                echo json_encode(['error' => 'Product not found']);
+                break;
+            }
+
+            $oldStock = (int) $existing['current_stock'];
+            $newStock = isset($body['current_stock']) ? max(0, (int) $body['current_stock']) : $oldStock;
+
+            $pdo->prepare("
+                UPDATE products 
+                   SET subcategory_id=?, name=?, sku=?, barcode=?, current_stock=?, min_stock_level=?, location=?, uom=?, condition=?, auth_qty=?, system_qty=?, serviceable_qty=?, updated_at=NOW()
+                 WHERE id=?
+            ")->execute([$subId, $name, $sku, $barcode, $newStock, $min, $location, $uom, $cond, $newStock, $newStock, $newStock, $productId]);
+
+            if ($newStock !== $oldStock) {
+                $diff = $newStock - $oldStock;
+                $txType = $diff > 0 ? 'add' : 'remove';
+                $pdo->prepare("
+                    INSERT INTO transactions (product_id, user_id, department_id, type, quantity, old_stock, new_stock, notes)
+                    VALUES (?,?,?,?,?,?,?,?)
+                ")->execute([$productId, $user['id'], $user['department_id'] ?? null, $txType, abs($diff), $oldStock, $newStock, "Admin stock correction via Edit Product"]);
+            }
+
+            audit(
+                $pdo,
+                $user['id'],
+                $user['username'],
+                'Edited Product & Stock',
+                "{$name} ({$sku})",
+                $productId,
+                "Stock: {$oldStock}",
+                "Stock: {$newStock} | Loc: {$location} | Min: {$min}"
+            );
+            echo json_encode(['success' => true]);
+        } elseif ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
+            $body = json_decode(file_get_contents('php://input'), true) ?? [];
+            verify_admin_password($pdo, $user, trim($body['admin_password'] ?? ''));
+
+            $productId = (int) ($_GET['id'] ?? $body['id'] ?? 0);
             if (!$productId) {
                 http_response_code(400);
                 echo json_encode(['error' => 'Product ID required']);
@@ -529,6 +847,7 @@ switch ($action) {
         break;
 
     // ── Product lookup by Barcode / SKU ────────────────────────────
+    case 'scan':
     case 'product_by_barcode':
         $user = authenticate_user($pdo);
         $barcode = trim($_GET['barcode'] ?? '');
@@ -541,6 +860,13 @@ switch ($action) {
         $stmt->execute([$barcode, $barcode]);
         $product = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($product) {
+            $holders = get_product_active_holders($pdo, (int)$product['id'], $product);
+            $product['active_holders'] = $holders;
+            if (!empty($holders)) {
+                $product['issued_to'] = implode(', ', array_map(fn($h) => "{$h['person']} ({$h['qty_held']} units)", $holders));
+            } else {
+                $product['issued_to'] = 'Unassigned';
+            }
             echo json_encode($product);
         } else {
             http_response_code(404);
@@ -560,6 +886,7 @@ switch ($action) {
         $qty = (int) ($body['quantity'] ?? 0);
         $deptId = !empty($body['department_id']) ? (int) $body['department_id'] : ($user['department_id'] ?? null);
         $notes = substr(trim($body['notes'] ?? ''), 0, 500);
+        $issuedTo = trim($body['issued_to'] ?? $body['assignee'] ?? $body['returned_by'] ?? '');
 
         if (!in_array($type, ['issue', 'return', 'add', 'remove'], true) || $qty < 1 || !$productId) {
             http_response_code(400);
@@ -569,7 +896,7 @@ switch ($action) {
 
         $pdo->beginTransaction();
         try {
-            $stmt = $pdo->prepare("SELECT id, name, current_stock, min_stock_level FROM products WHERE id = ? FOR UPDATE");
+            $stmt = $pdo->prepare("SELECT id, name, sku, current_stock, min_stock_level, auth_qty, issued_to FROM products WHERE id = ? FOR UPDATE");
             $stmt->execute([$productId]);
             $product = $stmt->fetch(PDO::FETCH_ASSOC);
             if (!$product)
@@ -586,13 +913,101 @@ switch ($action) {
             if ($newStock < 0)
                 throw new Exception('Insufficient stock. Available: ' . $oldStock);
 
-            $pdo->prepare("UPDATE products SET current_stock = ?, updated_at = NOW() WHERE id = ?")
-                ->execute([$newStock, $productId]);
+            if ($type === 'issue') {
+                if (!$issuedTo && preg_match('/Issued To:\s*([^|]+)/i', $notes, $m)) {
+                    $issuedTo = trim($m[1]);
+                }
+                $finalIssuedTo = $issuedTo ?: 'Assigned';
+                if (!str_contains($notes, 'Issued To:')) {
+                    $notes = "Issued To: {$finalIssuedTo}" . ($notes ? " | {$notes}" : "");
+                }
 
-            $pdo->prepare("
-                INSERT INTO transactions (product_id, user_id, department_id, type, quantity, old_stock, new_stock, notes)
-                VALUES (?,?,?,?,?,?,?,?)
-            ")->execute([$productId, $user['id'], $deptId, $type, $qty, $oldStock, $newStock, $notes]);
+                $pdo->prepare("
+                    INSERT INTO transactions (product_id, user_id, department_id, type, quantity, old_stock, new_stock, notes)
+                    VALUES (?,?,?,?,?,?,?,?)
+                ")->execute([$productId, $user['id'], $deptId, $type, $qty, $oldStock, $newStock, $notes]);
+
+                $holders = get_product_active_holders($pdo, $productId, $product);
+                $newIssuedToStr = !empty($holders)
+                    ? implode(', ', array_map(fn($h) => "{$h['person']} ({$h['qty_held']} units)", $holders))
+                    : 'Unassigned';
+
+                $pdo->prepare("UPDATE products SET current_stock = ?, issued_to = ?, updated_at = NOW() WHERE id = ?")
+                    ->execute([$newStock, $newIssuedToStr, $productId]);
+            } elseif ($type === 'return') {
+                $activeHolders = get_product_active_holders($pdo, $productId, $product);
+                if (empty($activeHolders)) {
+                    throw new Exception("Cannot return '{$product['name']}': this product is currently Unassigned (not issued to anyone).");
+                }
+
+                if (!$issuedTo && preg_match('/Returned By:\s*([^|]+)/i', $notes, $m)) {
+                    $issuedTo = trim($m[1]);
+                }
+
+                if (!$issuedTo) {
+                    throw new Exception("Returned By is a compulsory field. Please select who is returning the item.");
+                }
+
+                // Match holder (case-insensitive)
+                $matchedHolder = null;
+                foreach ($activeHolders as $h) {
+                    if (strcasecmp(trim($h['person']), $issuedTo) === 0) {
+                        $matchedHolder = $h;
+                        break;
+                    }
+                }
+
+                if (!$matchedHolder) {
+                    $holderNames = implode(', ', array_column($activeHolders, 'person'));
+                    throw new Exception("Cannot return item from '{$issuedTo}'. This stock is currently issued to: {$holderNames}.");
+                }
+
+                // Rule: Cannot return more than what this specific person was issued
+                if ($qty > $matchedHolder['qty_held']) {
+                    throw new Exception("Cannot return {$qty} unit(s) from '{$matchedHolder['person']}'. They currently only hold {$matchedHolder['qty_held']} issued unit(s).");
+                }
+
+                // Rule: Cannot exceed Authorized Qty
+                $authQty = (int) ($product['auth_qty'] ?? 0);
+                if ($authQty > 0 && $newStock > $authQty) {
+                    $maxReturnable = max(0, $authQty - $oldStock);
+                    throw new Exception("Cannot return {$qty} unit(s). Stock after return ({$newStock}) would exceed Authorized Qty ({$authQty}). Maximum returnable: {$maxReturnable}.");
+                }
+
+                $returnPerson = $matchedHolder['person'];
+                if (!str_contains($notes, 'Returned By:')) {
+                    $notes = "Returned By: {$returnPerson}" . ($notes ? " | {$notes}" : "");
+                }
+
+                $pdo->prepare("
+                    INSERT INTO transactions (product_id, user_id, department_id, type, quantity, old_stock, new_stock, notes)
+                    VALUES (?,?,?,?,?,?,?,?)
+                ")->execute([$productId, $user['id'], $deptId, $type, $qty, $oldStock, $newStock, $notes]);
+
+                $holders = get_product_active_holders($pdo, $productId, $product);
+                $newIssuedToStr = !empty($holders)
+                    ? implode(', ', array_map(fn($h) => "{$h['person']} ({$h['qty_held']} units)", $holders))
+                    : 'Unassigned';
+
+                $pdo->prepare("UPDATE products SET current_stock = ?, issued_to = ?, updated_at = NOW() WHERE id = ?")
+                    ->execute([$newStock, $newIssuedToStr, $productId]);
+            } elseif ($type === 'add') {
+                $pdo->prepare("UPDATE products SET current_stock = ?, auth_qty = GREATEST(auth_qty, ?), system_qty = ?, serviceable_qty = ?, updated_at = NOW() WHERE id = ?")
+                    ->execute([$newStock, $newStock, $newStock, $newStock, $productId]);
+
+                $pdo->prepare("
+                    INSERT INTO transactions (product_id, user_id, department_id, type, quantity, old_stock, new_stock, notes)
+                    VALUES (?,?,?,?,?,?,?,?)
+                ")->execute([$productId, $user['id'], $deptId, $type, $qty, $oldStock, $newStock, $notes]);
+            } else {
+                $pdo->prepare("UPDATE products SET current_stock = ?, updated_at = NOW() WHERE id = ?")
+                    ->execute([$newStock, $productId]);
+
+                $pdo->prepare("
+                    INSERT INTO transactions (product_id, user_id, department_id, type, quantity, old_stock, new_stock, notes)
+                    VALUES (?,?,?,?,?,?,?,?)
+                ")->execute([$productId, $user['id'], $deptId, $type, $qty, $oldStock, $newStock, $notes]);
+            }
 
             audit(
                 $pdo,
@@ -608,7 +1023,7 @@ switch ($action) {
             $pdo->commit();
             if (ob_get_length())
                 ob_clean();
-            echo json_encode(['success' => true, 'new_stock' => $newStock]);
+            echo json_encode(['success' => true, 'new_stock' => $newStock, 'issued_to' => ($newIssuedToStr ?? 'Unassigned')]);
         } catch (Exception $e) {
             $pdo->rollBack();
             if (ob_get_length())
@@ -636,24 +1051,71 @@ switch ($action) {
         echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
         break;
 
-    // ── Audit log (full security trail) ──────────────────────
+    // ── Audit log (full security trail with pagination support) ──
     case 'audit_logs':
         $user = authenticate_user($pdo);
-        $stmt = $pdo->query("
-            SELECT a.id, a.username, a.action, a.entity, a.entity_id,
-                   a.old_value, a.new_value, a.ip_address,
-                   a.device_fingerprint, a.timestamp
-              FROM audit_logs a
-             ORDER BY a.timestamp DESC
-             LIMIT 500
-        ");
-        echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+        if (isset($_GET['page'])) {
+            $page = max(1, intval($_GET['page']));
+            $limit = max(1, min(100, intval($_GET['limit'] ?? 20)));
+            $offset = ($page - 1) * $limit;
+
+            $total = (int) $pdo->query("SELECT COUNT(*) FROM audit_logs")->fetchColumn();
+            $totalPages = max(1, (int) ceil($total / $limit));
+
+            $stmt = $pdo->prepare("
+                SELECT a.id, a.username, a.action, a.entity, a.entity_id,
+                       a.old_value, a.new_value, a.ip_address,
+                       a.device_fingerprint, a.timestamp
+                  FROM audit_logs a
+                 ORDER BY a.timestamp DESC
+                 LIMIT :limit OFFSET :offset
+            ");
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+            $stmt->execute();
+            $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            echo json_encode([
+                'data' => $logs,
+                'total' => $total,
+                'page' => $page,
+                'limit' => $limit,
+                'total_pages' => $totalPages
+            ]);
+        } else {
+            $limit = max(1, min(500, intval($_GET['limit'] ?? 500)));
+            $stmt = $pdo->prepare("
+                SELECT a.id, a.username, a.action, a.entity, a.entity_id,
+                       a.old_value, a.new_value, a.ip_address,
+                       a.device_fingerprint, a.timestamp
+                  FROM audit_logs a
+                 ORDER BY a.timestamp DESC
+                 LIMIT :limit
+            ");
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+        }
         break;
 
     // ── Departments ───────────────────────────────────────────
     case 'departments':
         authenticate_user($pdo);
         echo json_encode($pdo->query("SELECT * FROM departments ORDER BY name")->fetchAll(PDO::FETCH_ASSOC));
+        break;
+
+    // ── Users list for assignees / return dropdown ────────────
+    case 'users':
+        $user = authenticate_user($pdo);
+        $stmt = $pdo->query("
+            SELECT u.id, u.username, u.barcode, r.name AS role_name, d.name AS dept_name
+              FROM users u
+              LEFT JOIN roles r ON u.role_id = r.id
+              LEFT JOIN departments d ON u.department_id = d.id
+             WHERE u.is_active = TRUE
+             ORDER BY u.username
+        ");
+        echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
         break;
 
     // ── Roles with user counts ────────────────────────────────
@@ -761,29 +1223,83 @@ switch ($action) {
         $pdo->beginTransaction();
         try {
             foreach ($rows as $i => $row) {
-                // Map CSV columns → DB fields
-                // CSV: Nomenclature / Equipment Name  → name
-                // CSV: Barcode / Barcode / QR Code    → barcode (auto if empty)
-                // CSV: Sec Cat/Part No / Part No / Category Code → sku
-                // CSV: System Qty or Physical Qty     → current_stock
-                // CSV: Min Stock Level                → min_stock_level
-                // CSV: Category                       → category name
-                // CSV: Sub-Category                   → subcategory name
+                // Flexible column mapping — accepts both the official template headers
+                // and the real-world catalog export headers used in the system.
 
-                $name = trim($row['Nomenclature / Equipment Name'] ?? $row['name'] ?? '');
-                $sku = trim($row['Sec Cat/Part No / Part No / Category Code'] ?? $row['sku'] ?? '');
-                $barcode = trim($row['Barcode / Barcode / QR Code'] ?? $row['barcode'] ?? '');
+                // Name: "Nomenclature / Equipment Name" | "Asset Name" | "name" | "Name" | "Equipment Name"
+                $name = trim(
+                    $row['Nomenclature / Equipment Name'] ??
+                    $row['Asset Name'] ??
+                    $row['Equipment Name'] ??
+                    $row['Name'] ??
+                    $row['name'] ??
+                    ''
+                );
+
+                // SKU: "Sec Cat/Part No / Part No / Category Code" | "SKU / Part No" | "SKU" | "Part No" | "sku"
+                $sku = trim(
+                    $row['Sec Cat/Part No / Part No / Category Code'] ??
+                    $row['SKU / Part No'] ??
+                    $row['SKU'] ??
+                    $row['Part No'] ??
+                    $row['sku'] ??
+                    ''
+                );
+
+                // Barcode: "Barcode / Barcode / QR Code" | "Barcode" | "barcode" | "QR Code"
+                $barcode = trim(
+                    $row['Barcode / Barcode / QR Code'] ??
+                    $row['Barcode'] ??
+                    $row['QR Code'] ??
+                    $row['barcode'] ??
+                    ''
+                );
+
                 $categoryN = trim($row['Category'] ?? '');
-                $subcatN = trim($row['Sub-Category'] ?? '');
-                $physQty = $row['Physical Qty'] ?? $row['System Qty'] ?? null;
-                $sysQty = $row['System Qty'] ?? $row['Auth Qty / Authorized Qty'] ?? null;
-                $currentStk = (int) (($physQty !== null && $physQty !== '') ? $physQty : ($sysQty !== null ? $sysQty : 0));
-                $minStk = (int) ($row['Min Stock Level'] ?? 5);
-                $uom = trim($row['UOM / Unit of Measure (UOM)'] ?? '');
-                $location = trim($row['Location / Store Room'] ?? '');
-                $remarks = trim($row['Remarks'] ?? '');
-                $authQty = (int) ($row['Auth Qty / Authorized Qty'] ?? $currentStk);
-                $systemQty = (int) ($row['System Qty'] ?? $currentStk);
+                $subcatN = trim($row['Sub-Category'] ?? $row['Subcategory'] ?? '');
+
+                // Current stock: "Physical Qty" | "Available Stock" | "System Qty" | "Total Stock"
+                $physQty = $row['Physical Qty'] ?? $row['Available Stock'] ?? null;
+                $sysQty = $row['System Qty'] ?? $row['Total Stock'] ?? null;
+                $currentStk = (int) (
+                    ($physQty !== null && $physQty !== '') ? $physQty :
+                    (($sysQty !== null && $sysQty !== '') ? $sysQty : 0)
+                );
+
+                // Min stock: "Min Stock Level" | "Safety Threshold" | "Min Stock" | "Minimum Stock"
+                $minStk = (int) (
+                    $row['Min Stock Level'] ??
+                    $row['Safety Threshold'] ??
+                    $row['Min Stock'] ??
+                    $row['Minimum Stock'] ??
+                    5
+                );
+
+                // UOM: "UOM / Unit of Measure (UOM)" | "UOM" | "Unit"
+                $uom = trim(
+                    $row['UOM / Unit of Measure (UOM)'] ??
+                    $row['UOM'] ??
+                    $row['Unit'] ??
+                    ''
+                );
+
+                // Location: "Location / Store Room" | "Location" | "Store Room" | "location"
+                $location = trim(
+                    $row['Location / Store Room'] ??
+                    $row['Location'] ??
+                    $row['Store Room'] ??
+                    $row['location'] ??
+                    ''
+                );
+                if ($location === '') {
+                    $location = 'Warehouse Main';
+                }
+
+                $remarks = trim($row['Remarks'] ?? $row['Notes'] ?? '');
+
+                // Auth / System / Serviceable quantities
+                $authQty = (int) ($row['Auth Qty / Authorized Qty'] ?? $row['Auth Qty'] ?? $row['Authorized Qty'] ?? $currentStk);
+                $systemQty = (int) ($row['System Qty'] ?? $row['Total Stock'] ?? $currentStk);
                 $serviceable = (int) ($row['Serviceable'] ?? $currentStk);
                 $unserviceable = (int) ($row['Unserviceable'] ?? 0);
                 $condition = trim($row['Condition'] ?? 'Good condition') ?: 'Good condition';

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Badge } from '../components/ui/Badge'
-import { getApiBase, apiFetch } from '../api'
+import { getApiBase, apiFetch, subscribeDataSync } from '../api'
 
 export default function StockPage() {
   const [data, setData] = useState(null)
@@ -8,12 +8,18 @@ export default function StockPage() {
 
   const base = getApiBase()
 
-  useEffect(() => {
+  const loadData = () => {
     apiFetch(`${base}/index.php?action=stock_summary`)
       .then(r => r.json())
       .then(d => setData(d || {}))
       .catch(console.error)
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    loadData()
+    const unsubscribe = subscribeDataSync(loadData, 3500)
+    return () => unsubscribe()
   }, [base])
 
   const stockRows = data?.products || []

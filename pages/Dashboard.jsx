@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { getApiBase, apiFetch } from '../api';
+import { getApiBase, apiFetch, subscribeDataSync } from '../api';
 
 export default function Dashboard() {
   const [data, setData] = useState({});
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  useEffect(() => {
+  const loadDashboard = () => {
     const apiBase = getApiBase();
     apiFetch(`${apiBase}/index.php?action=dashboard`)
     .then(r => {
@@ -18,6 +18,12 @@ export default function Dashboard() {
     .then(d => { if (d) setData(d); })
     .catch(console.error)
     .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadDashboard();
+    const unsubscribe = subscribeDataSync(loadDashboard, 3500);
+    return () => unsubscribe();
   }, []);
 
   const chartData = (data.lowStockItems || []).map(i => ({

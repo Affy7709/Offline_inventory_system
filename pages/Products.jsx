@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Download, X } from 'lucide-react';
 import Barcode from 'react-barcode';
 import { QRCodeSVG } from 'qrcode.react';
-import { getApiBase, apiFetch } from '../api';
+import { getApiBase, apiFetch, subscribeDataSync } from '../api';
 
 export default function Products() {
   const [products, setProducts] = useState([]);
@@ -19,12 +19,8 @@ export default function Products() {
     name: '', sku: '', subcategory_id: '', current_stock: 0, min_stock_level: 5
   });
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (silent = false) => {
+    if (!silent) setLoading(true);
     const apiBase = getApiBase();
     try {
       const [pRes, sRes] = await Promise.all([
@@ -39,6 +35,12 @@ export default function Products() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchData();
+    const unsubscribe = subscribeDataSync(() => fetchData(true), 3500);
+    return () => unsubscribe();
+  }, []);
 
   const handleAdd = async (e) => {
     e.preventDefault();

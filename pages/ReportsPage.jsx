@@ -3,16 +3,18 @@ import { FileDown, FileSpreadsheet, FileText } from 'lucide-react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import * as XLSX from 'xlsx'
-import { getApiBase, apiFetch } from '../api'
+import { getApiBase, apiFetch, subscribeDataSync } from '../api'
+import { useAlert } from '../components/ui/AlertContext'
 
 export default function ReportsPage() {
+  const { toast } = useAlert()
   const [logs, setLogs] = useState([])
   const [audit, setAudit] = useState([])
   const [loading, setLoading] = useState(true)
 
   const base = getApiBase()
 
-  useEffect(() => {
+  const loadData = () => {
     Promise.all([
       apiFetch(`${base}/index.php?action=reports`).then(r => r.json()).catch(() => []),
       apiFetch(`${base}/index.php?action=audit_logs`).then(r => r.json()).catch(() => [])
@@ -20,6 +22,12 @@ export default function ReportsPage() {
       setLogs(Array.isArray(txs) ? txs : [])
       setAudit(Array.isArray(auds) ? auds : [])
     }).finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    loadData()
+    const unsubscribe = subscribeDataSync(loadData, 3500)
+    return () => unsubscribe()
   }, [base])
 
   // PDF Export
@@ -40,9 +48,10 @@ export default function ReportsPage() {
       })
 
       doc.save(`${title.toLowerCase().replace(/\s+/g, '_')}.pdf`)
+      toast(`PDF report "${title}" generated successfully`, 'success')
     } catch (err) {
       console.error('PDF export failed:', err)
-      alert('Could not generate PDF')
+      toast(`Could not generate PDF for "${title}"`, 'error')
     }
   }
 
@@ -53,8 +62,10 @@ export default function ReportsPage() {
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, title)
       XLSX.writeFile(wb, `${title.toLowerCase().replace(/\s+/g, '_')}.xlsx`)
+      toast(`Excel report "${title}" exported successfully`, 'success')
     } catch (err) {
       console.error('Excel export failed:', err)
+      toast(`Could not export Excel for "${title}"`, 'error')
     }
   }
 

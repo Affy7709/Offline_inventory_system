@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import StatusDonut from '../components/dashboard/StatusDonut'
 import { Badge } from '../components/ui/Badge'
-import { getApiBase, apiFetch } from '../api'
+import { getApiBase, apiFetch, subscribeDataSync } from '../api'
 
 export default function DashboardPage() {
   const navigate = useNavigate()
@@ -36,15 +36,9 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchDashboardData(false)
 
-    // Live multi-device auto-sync polling
-    const interval = setInterval(() => fetchDashboardData(true), 4000)
-    const onFocus = () => fetchDashboardData(true)
-    window.addEventListener('focus', onFocus)
-
-    return () => {
-      clearInterval(interval)
-      window.removeEventListener('focus', onFocus)
-    }
+    // Real-time cross-device and cross-tab auto-sync
+    const unsubscribe = subscribeDataSync(() => fetchDashboardData(true), 3500)
+    return () => unsubscribe()
   }, [base])
 
   const totalProducts = Number(data?.totalProducts || stockData?.products?.length || 0)

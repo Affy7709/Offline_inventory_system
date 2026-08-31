@@ -1,6 +1,7 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
 import { clearAuth, apiFetch, getApiBase, company, navigation } from "../../api";
+import { useAlert } from "../ui/AlertContext";
 
 export default function Sidebar({
   collapsed,
@@ -9,17 +10,29 @@ export default function Sidebar({
   setMobileOpen,
 }) {
   const navigate = useNavigate();
+  const { showConfirm, toast } = useAlert();
 
-  const handleLogout = async () => {
-    try {
-      const apiBase = getApiBase();
-      await apiFetch(`${apiBase}/index.php?action=logout`, { method: "POST" });
-    } catch {
-      // ignore
-    } finally {
-      clearAuth();
-      navigate("/login");
-    }
+  const handleLogout = () => {
+    showConfirm({
+      title: "Sign Out",
+      message: "Are you sure you want to sign out of your Northstar AssetOps session?",
+      confirmText: "Sign Out",
+      cancelText: "Stay Logged In",
+      tone: "danger",
+      icon: "logout",
+      onConfirm: async () => {
+        try {
+          const apiBase = getApiBase();
+          await apiFetch(`${apiBase}/index.php?action=logout`, { method: "POST" });
+        } catch {
+          // ignore
+        } finally {
+          clearAuth();
+          toast("Signed out successfully", "info");
+          navigate("/login");
+        }
+      }
+    });
   };
 
   return (

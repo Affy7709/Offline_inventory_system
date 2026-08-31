@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Camera, Search, ScanLine, X, ArrowUpRight, ArrowDownLeft, UserCheck, ShieldCheck, LogIn } from 'lucide-react'
 import { Html5QrcodeScanner, Html5QrcodeScanType } from 'html5-qrcode'
-import { getApiBase, apiFetch, safeJson, setAuthToken } from '../api'
+import { getApiBase, apiFetch, safeJson, setAuthToken, subscribeDataSync } from '../api'
 import { useNavigate } from 'react-router-dom'
 
 export default function QrPage() {
@@ -24,16 +24,47 @@ export default function QrPage() {
 
   // Return states
   const [condition, setCondition] = useState('Good Condition')
+  const [returnedFrom, setReturnedFrom] = useState('')
   const [returnNotes, setReturnNotes] = useState('')
 
   const [txLoading, setTxLoading] = useState(false)
   const [txSuccess, setTxSuccess] = useState('')
   const [txError, setTxError] = useState('')
+  const [usersList, setUsersList] = useState([])
+  const [deptsList, setDeptsList] = useState([])
 
   const base = getApiBase()
 
   useEffect(() => {
+    apiFetch(`${base}/index.php?action=users`)
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setUsersList(d); })
+      .catch(() => {});
+    apiFetch(`${base}/index.php?action=departments`)
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setDeptsList(d); })
+      .catch(() => {});
+  }, [base])
+
+  // Quietly sync current_stock on background data change without resetting form or showing loading spinners
+  useEffect(() => {
+    if (!product?.barcode) return
+    const unsubscribe = subscribeDataSync(async () => {
+      try {
+        const res = await apiFetch(`${base}/index.php?action=product_by_barcode&barcode=${encodeURIComponent(product.barcode)}`)
+        const data = await safeJson(res)
+        if (res.ok && data && data.current_stock !== undefined) {
+          setProduct(prev => prev ? { ...prev, current_stock: data.current_stock } : prev)
+        }
+      } catch (e) {}
+    }, 0) // No interval polling
+    return () => unsubscribe()
+  }, [product?.barcode, base])
+
+  useEffect(() => {
     let scanner = null
+    let isScanning = false
+
     if (showCamera) {
       scanner = new Html5QrcodeScanner(
         'barcode-viewfinder',
@@ -48,9 +79,14 @@ export default function QrPage() {
       scannerRef.current = scanner
       scanner.render(
         (decodedText) => {
+          if (isScanning) return
+          isScanning = true
+
           setSku(decodedText)
           handleLookup(decodedText)
-          scanner.clear().catch(console.error)
+          if (scanner) {
+            scanner.clear().catch(console.error)
+          }
           scannerRef.current = null
           setShowCamera(false)
         },
@@ -106,6 +142,12 @@ export default function QrPage() {
       const data = await safeJson(res)
       if (res.ok && data) {
         setProduct(data)
+        if (data.active_holders && data.active_holders.length === 1) {
+          setReturnedFrom(data.active_holders[0].person)
+        } else {
+          setReturnedFrom('')
+        }
+        setIssuedTo('')
       } else {
         setError(data.error || 'No item found matching this Barcode')
       }
@@ -137,12 +179,18 @@ export default function QrPage() {
       setTxError('Issued To is a mandatory field')
       return
     }
+
+    const validQty = Math.max(1, parseInt(txQty, 10) || 1)
+    if (validQty > Number(product.current_stock)) {
+      setTxError(`Cannot issue ${validQty} units. Only ${product.current_stock} available in stock.`)
+      return
+    }
+
     setTxLoading(true)
     setTxSuccess('')
     setTxError('')
 
     const compiledNotes = `Issued To: ${issuedTo.trim()}${purpose.trim() ? ` | Purpose: ${purpose.trim()}` : ''}`
-    const validQty = Math.max(1, parseInt(txQty, 10) || 1)
 
     try {
       const res = await apiFetch(`${base}/index.php?action=transaction`, {
@@ -152,13 +200,21 @@ export default function QrPage() {
           product_id: Number(product.id),
           type: 'issue',
           quantity: validQty,
+          issued_to: issuedTo.trim(),
           notes: compiledNotes
         })
       })
       const data = await safeJson(res)
       if (res.ok && data.success) {
         setTxSuccess(`Successfully issued ${validQty} unit(s) to ${issuedTo.trim()}!`)
-        setProduct(prev => ({ ...prev, current_stock: data.new_stock }))
+        // Refetch product to update active holders
+        const refetch = await apiFetch(`${base}/index.php?action=product_by_barcode&barcode=${encodeURIComponent(product.barcode || product.sku)}`)
+        const refreshedData = await safeJson(refetch)
+        if (refetch.ok && refreshedData) {
+          setProduct(refreshedData)
+        } else {
+          setProduct(prev => ({ ...prev, current_stock: data.new_stock, issued_to: data.issued_to }))
+        }
         setIssuedTo('')
         setPurpose('')
       } else {
@@ -178,12 +234,45 @@ export default function QrPage() {
       setTxError('No valid product selected')
       return
     }
+
+    const holders = product.active_holders || []
+    if (holders.length === 0) {
+      setTxError('Cannot return item: this product has no active issued units.')
+      return
+    }
+
+    if (!returnedFrom.trim()) {
+      setTxError('Returned By is a compulsory field. Please select who is returning the item.')
+      return
+    }
+
+    const matched = holders.find(h => h.person.toLowerCase() === returnedFrom.trim().toLowerCase())
+    if (!matched) {
+      setTxError(`Cannot return item from '${returnedFrom}'. They do not hold any issued units.`)
+      return
+    }
+
+    const validQty = Math.max(1, parseInt(txQty, 10) || 1)
+    if (validQty > matched.qty_held) {
+      setTxError(`Cannot return ${validQty} unit(s). ${matched.person} only holds ${matched.qty_held} issued unit(s).`)
+      return
+    }
+
+    const authQty = Number(product.auth_qty || product.current_stock || 0)
+    const currentStock = Number(product.current_stock || 0)
+
+    if (authQty > 0 && (currentStock + validQty) > authQty) {
+      const maxReturnable = Math.max(0, authQty - currentStock)
+      setTxError(`Cannot return ${validQty} unit(s). Resulting stock (${currentStock + validQty}) would exceed Authorized Qty (${authQty}). Max returnable: ${maxReturnable}.`)
+      return
+    }
+
     setTxLoading(true)
     setTxSuccess('')
     setTxError('')
 
-    const compiledNotes = `Condition: ${condition}${returnNotes.trim() ? ` | Notes: ${returnNotes.trim()}` : ''}`
-    const validQty = Math.max(1, parseInt(txQty, 10) || 1)
+    const returnPerson = matched.person
+    const compiledNotes = `Returned By: ${returnPerson} | Condition: ${condition}${returnNotes.trim() ? ` | Notes: ${returnNotes.trim()}` : ''}`
 
     try {
       const res = await apiFetch(`${base}/index.php?action=transaction`, {
@@ -193,13 +282,27 @@ export default function QrPage() {
           product_id: Number(product.id),
           type: 'return',
           quantity: validQty,
+          issued_to: returnPerson,
           notes: compiledNotes
         })
       })
       const data = await safeJson(res)
       if (res.ok && data.success) {
-        setTxSuccess(`Successfully returned ${validQty} unit(s)!`)
-        setProduct(prev => ({ ...prev, current_stock: data.new_stock }))
+        setTxSuccess(`Successfully returned ${validQty} unit(s) from ${returnPerson}!`)
+        // Refetch product to update active holders
+        const refetch = await apiFetch(`${base}/index.php?action=product_by_barcode&barcode=${encodeURIComponent(product.barcode || product.sku)}`)
+        const refreshedData = await safeJson(refetch)
+        if (refetch.ok && refreshedData) {
+          setProduct(refreshedData)
+          if (refreshedData.active_holders && refreshedData.active_holders.length === 1) {
+            setReturnedFrom(refreshedData.active_holders[0].person)
+          } else {
+            setReturnedFrom('')
+          }
+        } else {
+          setProduct(prev => ({ ...prev, current_stock: data.new_stock, issued_to: data.issued_to }))
+          setReturnedFrom('')
+        }
         setReturnNotes('')
       } else {
         setTxError(data.error || 'Transaction failed')
@@ -443,23 +546,84 @@ export default function QrPage() {
                 </form>
               ) : (
                 <form onSubmit={handleReturnSubmit} className="space-y-3">
+                  {product.active_holders && product.active_holders.length > 0 ? (
+                    <div className="p-2.5 bg-emerald-50/80 border border-emerald-200 rounded-xl text-xs space-y-1.5">
+                      <span className="text-emerald-800 font-semibold block">Currently Issued To ({product.active_holders.length} {product.active_holders.length === 1 ? 'person' : 'people'}):</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {product.active_holders.map(h => (
+                          <span key={h.person} className="font-bold text-emerald-950 bg-emerald-100/90 border border-emerald-300 px-2 py-0.5 rounded text-[11px]">
+                            👤 {h.person}: {h.qty_held} {h.qty_held === 1 ? 'unit' : 'units'}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-medium flex items-center gap-2">
+                      <span className="text-rose-600 font-bold">⛔ Cannot Return:</span>
+                      <span>This product has no active issued units. Items must be issued before they can be returned.</span>
+                    </div>
+                  )}
+
+                  {product.active_holders && product.active_holders.length > 0 && (
+                    <div className="p-2 bg-blue-50 border border-blue-200 rounded-xl text-xs flex items-center justify-between text-blue-800">
+                      <span>Authorized Quota: <strong>{product.auth_qty || product.current_stock}</strong> | In Stock: <strong>{product.current_stock}</strong></span>
+                      {(() => {
+                        const matched = product.active_holders?.find(h => h.person.toLowerCase() === returnedFrom.trim().toLowerCase());
+                        return matched ? (
+                          <span className="font-bold text-blue-900 bg-blue-100 px-2 py-0.5 rounded">
+                            Max Returnable: {matched.qty_held} units
+                          </span>
+                        ) : (
+                          <span className="font-medium text-blue-700">Select returner below</span>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="text-[10px] text-slate-400 uppercase font-semibold block mb-1">Returned By (Select Who Is Returning) *</label>
+                    <select
+                      required
+                      disabled={!product.active_holders || product.active_holders.length === 0}
+                      value={returnedFrom}
+                      onChange={e => setReturnedFrom(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-900 bg-white font-medium disabled:opacity-50"
+                    >
+                      <option value="">-- Select Who Is Returning (Compulsory) * --</option>
+                      {product.active_holders && product.active_holders.map(h => (
+                        <option key={h.person} value={h.person}>
+                          👤 {h.person} ({h.qty_held} {h.qty_held === 1 ? 'unit' : 'units'} held)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="text-[10px] text-slate-400 uppercase font-semibold block mb-1">Quantity *</label>
-                      <input 
-                        type="number" 
-                        min="1" 
-                        value={txQty}
-                        onChange={e => setTxQty(e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-900 outline-none focus:border-slate-900 bg-white"
-                      />
+                      {(() => {
+                        const matched = product.active_holders?.find(h => h.person.toLowerCase() === returnedFrom.trim().toLowerCase());
+                        const maxBound = matched ? matched.qty_held : 1;
+                        return (
+                          <input 
+                            type="number" 
+                            min="1" 
+                            max={maxBound}
+                            value={txQty}
+                            onChange={e => setTxQty(e.target.value)}
+                            disabled={!product.active_holders || product.active_holders.length === 0 || !returnedFrom}
+                            className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-900 outline-none focus:border-slate-900 bg-white disabled:opacity-50"
+                          />
+                        );
+                      })()}
                     </div>
                     <div className="col-span-2">
                       <label className="text-[10px] text-slate-400 uppercase font-semibold block mb-1">Condition</label>
                       <select
                         value={condition}
                         onChange={e => setCondition(e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm text-slate-900 outline-none focus:border-slate-900 bg-white"
+                        disabled={!product.active_holders || product.active_holders.length === 0}
+                        className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm text-slate-900 outline-none focus:border-slate-900 bg-white disabled:opacity-50"
                       >
                         <option value="Good Condition">Good Condition</option>
                         <option value="Minor Wear">Minor Wear</option>
@@ -473,17 +637,18 @@ export default function QrPage() {
                     <label className="text-[10px] text-slate-400 uppercase font-semibold block mb-1">Notes (Optional)</label>
                     <input 
                       type="text" 
+                      disabled={!product.active_holders || product.active_holders.length === 0}
                       placeholder="e.g. Returned after project completion"
                       value={returnNotes}
                       onChange={e => setReturnNotes(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm text-slate-900 outline-none focus:border-slate-900 bg-white"
+                      className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm text-slate-900 outline-none focus:border-slate-900 bg-white disabled:opacity-50"
                     />
                   </div>
 
                   <button
                     type="submit"
-                    disabled={txLoading}
-                    className="w-full rounded-xl bg-emerald-600 py-2.5 text-xs font-semibold text-white hover:bg-emerald-700 transition disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
+                    disabled={txLoading || !product.active_holders || product.active_holders.length === 0 || !returnedFrom}
+                    className="w-full rounded-xl bg-emerald-600 py-2.5 text-xs font-semibold text-white hover:bg-emerald-700 transition disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm disabled:cursor-not-allowed"
                   >
                     <ArrowDownLeft size={14} />
                     Confirm Return ({(parseInt(txQty, 10) || 1)} {(parseInt(txQty, 10) || 1) === 1 ? 'unit' : 'units'})

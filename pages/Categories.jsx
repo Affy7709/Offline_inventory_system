@@ -15,7 +15,7 @@ import {
   Package,
   ChevronRight
 } from 'lucide-react';
-import { getApiBase, apiFetch } from '../api';
+import { getApiBase, apiFetch, subscribeDataSync } from '../api';
 
 export default function Categories() {
   const navigate = useNavigate();
@@ -40,6 +40,8 @@ export default function Categories() {
 
   useEffect(() => {
     fetchData();
+    const unsubscribe = subscribeDataSync(() => fetchData(true), 3500);
+    return () => unsubscribe();
   }, []);
 
   const showToast = (message, type = 'success') => {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Badge } from '../components/ui/Badge'
-import { getApiBase, apiFetch } from '../api'
+import { getApiBase, apiFetch, subscribeDataSync } from '../api'
 
 const defaultPermissions = {
   Admin: 'Full system access + User management',
@@ -15,12 +15,18 @@ export default function RolesPage() {
 
   const base = getApiBase()
 
-  useEffect(() => {
+  const loadRoles = () => {
     apiFetch(`${base}/index.php?action=roles`)
       .then(r => r.json())
       .then(d => setRoles(Array.isArray(d) ? d : []))
       .catch(console.error)
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    loadRoles()
+    const unsubscribe = subscribeDataSync(loadRoles, 3500)
+    return () => unsubscribe()
   }, [base])
 
   return (

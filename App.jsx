@@ -15,6 +15,7 @@ import Categories       from './pages/Categories';
 
 import './App.css';
 import { getAuthToken } from './api';
+import { AlertProvider } from './components/ui/AlertContext';
 
 function PrivateRoute({ children }) {
   const user = localStorage.getItem('user');
@@ -26,23 +27,25 @@ function PrivateRoute({ children }) {
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<Login />} />
+      <AlertProvider>
+        <Routes>
+          <Route path="/login" element={<Login />} />
 
-        {/* All 10 Pages from Inventory */}
-        <Route path="/"             element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
-        <Route path="/inventory"    element={<PrivateRoute><InventoryPage /></PrivateRoute>} />
-        <Route path="/categories"   element={<PrivateRoute><Categories /></PrivateRoute>} />
-        <Route path="/qr"           element={<PrivateRoute><QrPage /></PrivateRoute>} />
-        <Route path="/transactions" element={<PrivateRoute><TransactionsPage /></PrivateRoute>} />
-        <Route path="/stock"        element={<PrivateRoute><InventoryPage /></PrivateRoute>} />
-        <Route path="/allocations"  element={<PrivateRoute><AllocationsPage /></PrivateRoute>} />
-        <Route path="/reports"      element={<PrivateRoute><ReportsPage /></PrivateRoute>} />
-        <Route path="/audit"        element={<PrivateRoute><AuditPage /></PrivateRoute>} />
+          {/* All 10 Pages from Inventory */}
+          <Route path="/"             element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
+          <Route path="/inventory"    element={<PrivateRoute><InventoryPage /></PrivateRoute>} />
+          <Route path="/categories"   element={<PrivateRoute><Categories /></PrivateRoute>} />
+          <Route path="/qr"           element={<PrivateRoute><QrPage /></PrivateRoute>} />
+          <Route path="/transactions" element={<PrivateRoute><TransactionsPage /></PrivateRoute>} />
+          <Route path="/stock"        element={<PrivateRoute><InventoryPage /></PrivateRoute>} />
+          <Route path="/allocations"  element={<PrivateRoute><AllocationsPage /></PrivateRoute>} />
+          <Route path="/reports"      element={<PrivateRoute><ReportsPage /></PrivateRoute>} />
+          <Route path="/audit"        element={<PrivateRoute><AuditPage /></PrivateRoute>} />
 
-        {/* Catch-all redirect to Dashboard */}
-        <Route path="*"             element={<Navigate to="/" replace />} />
-      </Routes>
+          {/* Catch-all redirect to Dashboard */}
+          <Route path="*"             element={<Navigate to="/" replace />} />
+        </Routes>
+      </AlertProvider>
     </BrowserRouter>
   );
 }

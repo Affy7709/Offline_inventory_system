@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import { getApiBase, apiFetch } from '../api';
+import { getApiBase, apiFetch, subscribeDataSync } from '../api';
 
 // ================================================================
 //  Reports.jsx — Two tabs:
@@ -24,21 +24,32 @@ export default function Reports() {
 
   const base = getApiBase();
 
-  useEffect(() => {
-    setLoading(true);
+  const loadData = () => {
     apiFetch(`${base}/index.php?action=reports`)
       .then(r => r.json())
       .then(d => setLogs(Array.isArray(d) ? d : []))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+    if (tab === 'audit' || audit.length > 0) {
+      apiFetch(`${base}/index.php?action=audit_logs`)
+        .then(r => r.json())
+        .then(d => setAudit(Array.isArray(d) ? d : (Array.isArray(d?.data) ? d.data : [])))
+        .catch(console.error);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+    const unsubscribe = subscribeDataSync(loadData, 3500);
+    return () => unsubscribe();
+  }, [base, tab]);
 
   const loadAudit = () => {
     if (audit.length > 0) return;
     setALoading(true);
     apiFetch(`${base}/index.php?action=audit_logs`)
       .then(r => r.json())
-      .then(d => setAudit(Array.isArray(d) ? d : []))
+      .then(d => setAudit(Array.isArray(d) ? d : (Array.isArray(d?.data) ? d.data : [])))
       .catch(console.error)
       .finally(() => setALoading(false));
   };
